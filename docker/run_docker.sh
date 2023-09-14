@@ -3,7 +3,10 @@
 script_dir=$(dirname "${BASH_SOURCE[0]}")
 
 # Change the working directory to the script's directory
-cd "../$script_dir"
+cd "$script_dir/.."
+echo $PWD
+
+SF_NAME="fabio"
 
 # Define the name of the ROS Noetic container
 container_name="noetic_srrg"
@@ -34,12 +37,18 @@ fi
         if [ "$(docker ps -aq -f status=exited -f name=$container_name)" ]; then
             # A container with the specified name exists but is stopped
             echo "Starting existing container $container_name..."
-            docker start $container_name
-            docker exec -it $container_name /bin/bash
+            docker start $container_name 
+            docker exec -it $container_name /bin/bash 
         else
             # No container with the specified name exists
             echo "Creating and starting a new container $container_name..."
-            docker run -v $PWD:/workspace/src/fabio -it --name $container_name $image_name /bin/bash 
+            docker run --gpus all \
+                       -e DISPLAY=$DISPLAY \
+                       -v $PWD:/workspace/src/$SF_NAME \
+                       -v /tmp/.X11-unix/:/tmp/.X11-unix/ \
+					   --device=/dev/dri:/dev/dri \
+	                   -it --name $container_name $image_name /bin/bash 
+						
         fi
     fi
 
