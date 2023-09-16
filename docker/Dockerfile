@@ -22,7 +22,7 @@ RUN echo "export LS_COLORS='di=31:ln=36'" >> /root/.bashrc
 RUN echo 'source /workspace/devel/setup.bash' >> /root/.bashrc
 
 # shared folder
-ARG SF_NAME="fabio"
+ARG SF_NAME="test_imu"
 RUN cd /workspace/src/ && mkdir $SF_NAME
 
 WORKDIR /

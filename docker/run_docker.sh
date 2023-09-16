@@ -6,7 +6,7 @@ script_dir=$(dirname "${BASH_SOURCE[0]}")
 cd "$script_dir/.."
 echo $PWD
 
-SF_NAME="fabio"
+SF_NAME="test_imu"
 
 # Define the name of the ROS Noetic container
 container_name="noetic_srrg"
@@ -42,12 +42,13 @@ fi
         else
             # No container with the specified name exists
             echo "Creating and starting a new container $container_name..."
-            docker run --gpus all \
+            docker run -it \
+                       --gpus all \
                        -e DISPLAY=$DISPLAY \
                        -v $PWD:/workspace/src/$SF_NAME \
                        -v /tmp/.X11-unix/:/tmp/.X11-unix/ \
 					   --device=/dev/dri:/dev/dri \
-	                   -it --name $container_name $image_name /bin/bash 
+	                   --name $container_name $image_name /bin/bash 
 						
         fi
     fi
