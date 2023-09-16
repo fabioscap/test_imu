@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(fabio)
+project(test_imu)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror=pedantic")
 
@@ -29,11 +29,11 @@ include(${srrg_cmake_modules_INCLUDE_DIRS}/CMakeCompileOptions.txt)
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+  ${PROJECT_SOURCE_DIR}/src
 )
 
 # this is important. it tells cmake where to look for libraries
 link_directories(${catkin_LIBRARY_DIRS})
 
-add_subdirectory(
-  src
-)
+add_subdirectory(src)
+add_subdirectory(examples)
