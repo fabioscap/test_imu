@@ -33,7 +33,7 @@ def set_axes_equal(ax):
 
 # Load poses_pred from the text file
 poses_pred = []
-with open("examples/output_pred.txt", 'r') as file:
+with open("../examples/output_pred.txt", 'r') as file:
     lines = file.readlines()
     for i in range(0, len(lines), 4):
         T = np.empty((4, 4), dtype=float)
@@ -47,7 +47,7 @@ with open("examples/output_pred.txt", 'r') as file:
         poses_pred.append((R,t))
 
 poses_gt = []
-with open("examples/output_gt.txt", 'r') as file:
+with open("../examples/output_gt.txt", 'r') as file:
     lines = file.readlines()
     for i in range(0, len(lines), 4):
         T = np.empty((4, 4), dtype=float)

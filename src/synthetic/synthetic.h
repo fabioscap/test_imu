@@ -22,7 +22,7 @@ namespace test_imu {
 
     // The frame is always tangent to the curve with its x-axis,
     // and the z-axis always points up (you can add rotation if needed).
-    void getPoseMeasurement(float t, srrg2_core::Isometry3f& pose, IMUMeasurement& measurement);
+    void getPoseMeasurement(float t, srrg2_core::Isometry3f& pose, ImuMeasurement& measurement);
 
     inline void setT(float T) {
       T_       = T;
@@ -59,20 +59,23 @@ namespace test_imu {
                           srrg2_core::Vector3f& acc) const override;
   };
 
-  class FakeIMU : public IMUSensor {
+  class FakeImu {
   public:
-    FakeIMU(std::shared_ptr<SE3PlanarTrajectory> traj_, float freq, int seed = std::time(0)) :
-      IMUSensor(freq), trajectory_(traj_), rnd_gen_(seed) {
+    FakeImu(std::shared_ptr<SE3PlanarTrajectory> traj_, float freq, int seed = std::time(0)) :
+      freq_(freq), trajectory_(traj_), rnd_gen_(seed) {
       srrg2_core::Vector3f pos, vel, acc;
     }
 
-    void generateData(std::vector<std::pair<IMUMeasurement, srrg2_core::Isometry3f>>& data);
+    void generateData(std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>>& data,
+                      bool noise = false);
 
     inline const SE3PlanarTrajectory& trajectory() const {
       return *trajectory_;
     }
 
   protected:
+    float freq_; // the frequency at which a new measurement becomes available
+
     const float noise_acc_       = 0.00175f;
     const float noise_gyro_      = 0.00175f;
     const float noise_bias_acc_  = 0.00167f;

@@ -1,2 +1,3 @@
-add_subdirectory(synthetic)
 add_subdirectory(common)
+add_subdirectory(synthetic)
+add_subdirectory(variables_and_factors)

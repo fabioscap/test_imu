@@ -2,29 +2,33 @@
 
 #include "synthetic/synthetic.h"
 
+#include "variables_and_factors/imu_preintegration_factor.h"
+
 #include <fstream>
 
 int main() {
   using namespace test_imu;
-  using TrajectoryType = SE3EightTrajectory;
+  using TrajectoryType = SE3CircleTrajectory;
 
   std::ofstream out_pred("/workspace/src/test_imu/examples/output_pred.txt");
   std::ofstream out_gt("/workspace/src/test_imu/examples/output_gt.txt");
-  float T    = 2 * M_PI;
-  float freq = 300;
+  float T    = 10;
+  float freq = 100;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
-  FakeIMU imu(traj, freq);
+  FakeImu imu(traj, freq, 102030);
 
-  std::vector<std::pair<IMUMeasurement, srrg2_core::Isometry3f>> data;
+  std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>> data;
 
   imu.generateData(data);
 
   srrg2_core::Isometry3f pose;
   srrg2_core::Vector3f vel;
   float t              = 0;
-  IMUMeasurement& meas = data.at(0).first;
+  ImuMeasurement& meas = data.at(0).first;
 
+  // standard euler integration
+  /*
   for (size_t i = 0; i < data.size(); ++i) {
     if (i == 0) {
       pose = data.at(i).second;
@@ -39,7 +43,7 @@ int main() {
     out_pred << pose.matrix() << "\n";
 
     // srrg2_core::Isometry3f& T = data.at(i).second;
-    IMUMeasurement& new_meas    = data.at(i).first;
+    ImuMeasurement& new_meas    = data.at(i).first;
     float dt                    = new_meas.timestamp - t;
     Eigen::Vector3f translation = pose.translation();
     srrg2_core::Matrix3f R      = pose.rotation();
@@ -56,5 +60,32 @@ int main() {
     pose.linear()      = R;
     meas               = new_meas;
     t                  = new_meas.timestamp;
+  }
+  */
+
+  // imu preintegration
+  ImuPreintegrator integrator;
+  for (size_t i = 0; i < data.size(); ++i) {
+    if (i == 0) {
+      pose = data.at(i).second;
+      t    = meas.timestamp;
+      srrg2_core::Vector3f pos, acc;
+
+      integrator.reset(data.at(i).first);
+
+      imu.trajectory().sampleTrajectory(t, pos, vel, acc);
+      out_gt << data.at(i).second.matrix() << "\n";
+      out_pred << pose.matrix() << "\n";
+      continue;
+    }
+    out_gt << data.at(i).second.matrix() << "\n";
+    out_pred << pose.matrix() << "\n";
+
+    // srrg2_core::Isometry3f& T = data.at(i).second;
+    ImuMeasurement& new_meas = data.at(i).first;
+
+    integrator.preintegrate(new_meas);
+
+    // pose = ...
   }
 }

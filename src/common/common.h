@@ -5,21 +5,13 @@
 
 namespace test_imu {
 
-  const srrg2_core::Vector3f gravity_vector(0, 0, -9.81);
+  namespace core = srrg2_core;
 
-  struct IMUMeasurement {
-    srrg2_core::Vector3f acceleration;
-    srrg2_core::Vector3f angular_vel;
+  struct ImuMeasurement {
+    core::Vector3f acceleration;
+    core::Vector3f angular_vel;
 
     double timestamp;
-  };
-
-  class IMUSensor {
-  public:
-    IMUSensor(float freq);
-
-  protected:
-    float freq_; // the frequency at which a new measurement becomes available
   };
 
 } // namespace test_imu

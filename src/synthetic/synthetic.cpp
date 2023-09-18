@@ -13,13 +13,13 @@
 
 using namespace test_imu;
 
-using DVector3f = srrg2_core::Vector3_<srrg2_core::DualValuef>;
+using DVector3f = core::Vector3_<core::DualValuef>;
 
-const float a = 1.0; // amplitude parameter
+const float a = 100.0; // amplitude parameter
 void SE3EightTrajectory::sampleTrajectory(float t,
-                                          srrg2_core::Vector3f& pos,
-                                          srrg2_core::Vector3f& vel,
-                                          srrg2_core::Vector3f& acc) const {
+                                          core::Vector3f& pos,
+                                          core::Vector3f& vel,
+                                          core::Vector3f& acc) const {
   // lemniscate cartesian equations
   float theta = t * scaling_;
 
@@ -28,7 +28,7 @@ void SE3EightTrajectory::sampleTrajectory(float t,
   float stheta2 = stheta * stheta;
   float ctheta2 = ctheta * ctheta;
 
-  using namespace srrg2_core;
+  using namespace core;
 
   pos << a * Vector3f(ctheta, ctheta * stheta, 0.0) / (stheta2 + (1));
   vel << scaling_ * a * Vector3f((stheta * (stheta2 - 3)), -(3 * stheta2 - 1), 0) /
@@ -43,10 +43,10 @@ void SE3EightTrajectory::sampleTrajectory(float t,
 
 const float r = 10.0;
 void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
-                                                     srrg2_core::Vector3f& pos,
-                                                     srrg2_core::Vector3f& vel,
-                                                     srrg2_core::Vector3f& acc) const {
-  using namespace srrg2_core;
+                                                     core::Vector3f& pos,
+                                                     core::Vector3f& vel,
+                                                     core::Vector3f& acc) const {
+  using namespace core;
   float theta = t * scaling_;
 
   float ctheta = std::cos(theta);
@@ -58,9 +58,9 @@ void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
 }
 
 void SE3PlanarTrajectory::getPoseMeasurement(float t,
-                                             srrg2_core::Isometry3f& pose,
-                                             IMUMeasurement& measurement) {
-  using namespace srrg2_core;
+                                             core::Isometry3f& pose,
+                                             ImuMeasurement& measurement) {
+  using namespace core;
   pose.setIdentity();
 
   Vector3f pos, vel, acc;
@@ -108,9 +108,9 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
   measurement.timestamp = t;
 }
 
-void test_imu::FakeIMU::generateData(
-  std::vector<std::pair<IMUMeasurement, srrg2_core::Isometry3f>>& data) {
-  using namespace srrg2_core;
+void test_imu::FakeImu::generateData(std::vector<std::pair<ImuMeasurement, core::Isometry3f>>& data,
+                                     bool noise) {
+  using namespace core;
 
   int num  = trajectory_->T() * freq_;
   float dt = 1 / freq_;
@@ -127,12 +127,12 @@ void test_imu::FakeIMU::generateData(
   float t = 0;
   for (int i = 0; i < num; ++i, t += dt) {
     Isometry3f& pose     = data.at(i).second;
-    IMUMeasurement& meas = data.at(i).first;
+    ImuMeasurement& meas = data.at(i).first;
 
     trajectory_->getPoseMeasurement(t, pose, meas);
     // noise
     // bias is assumed constant between keyframes in 2015 paper (TODO)
-    if (false) {
+    if (noise) {
       ba += noise_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       bg += noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.acceleration +=
