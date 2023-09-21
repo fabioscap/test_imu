@@ -10,10 +10,10 @@
 // and produce imu measurements
 
 namespace test_imu {
-
+  // the trajectories must have positive velocity always
   class SE3PlanarTrajectory {
   public:
-    SE3PlanarTrajectory(float T) : T_(T), scaling_(2 * M_PI / T_){};
+    SE3PlanarTrajectory(float T) : T_(T){};
 
     virtual void sampleTrajectory(float t,
                                   srrg2_core::Vector3f& pos,
@@ -25,8 +25,7 @@ namespace test_imu {
     void getPoseMeasurement(float t, srrg2_core::Isometry3f& pose, ImuMeasurement& measurement);
 
     inline void setT(float T) {
-      T_       = T;
-      scaling_ = 2 * M_PI / T_;
+      T_ = T;
     }
 
     inline float T() const {
@@ -34,8 +33,7 @@ namespace test_imu {
     }
 
   protected:
-    float T_;       // The duration of the trajectory
-    float scaling_; // linear timing law
+    float T_; // The duration of the trajectory
   };
 
   class SE3EightTrajectory : public SE3PlanarTrajectory {
@@ -51,6 +49,17 @@ namespace test_imu {
   class SE3CircleTrajectory : public SE3PlanarTrajectory {
   public:
     SE3CircleTrajectory(float T) : SE3PlanarTrajectory(T) {
+    }
+
+    void sampleTrajectory(float t,
+                          srrg2_core::Vector3f& pos,
+                          srrg2_core::Vector3f& vel,
+                          srrg2_core::Vector3f& acc) const override;
+  };
+
+  class SE3StraightTrajectory : public SE3PlanarTrajectory {
+  public:
+    SE3StraightTrajectory(float T) : SE3PlanarTrajectory(T) {
     }
 
     void sampleTrajectory(float t,

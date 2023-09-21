@@ -21,7 +21,8 @@ void SE3EightTrajectory::sampleTrajectory(float t,
                                           core::Vector3f& vel,
                                           core::Vector3f& acc) const {
   // lemniscate cartesian equations
-  float theta = t * scaling_;
+  float scaling = (2 * M_PI / T_);
+  float theta   = t * scaling;
 
   float ctheta  = std::cos(theta);
   float stheta  = std::sin(theta);
@@ -31,9 +32,9 @@ void SE3EightTrajectory::sampleTrajectory(float t,
   using namespace core;
 
   pos << a * Vector3f(ctheta, ctheta * stheta, 0.0) / (stheta2 + (1));
-  vel << scaling_ * a * Vector3f((stheta * (stheta2 - 3)), -(3 * stheta2 - 1), 0) /
+  vel << scaling * a * Vector3f((stheta * (stheta2 - 3)), -(3 * stheta2 - 1), 0) /
            ((stheta2 + 1) * (stheta2 + 1));
-  acc << scaling_ * scaling_ * a *
+  acc << scaling * scaling * a *
            Vector3f((ctheta * (10 * ctheta2 + ctheta2 * ctheta2 - 8)) /
                       ((ctheta2 - 2) * (ctheta2 - 2) * (ctheta2 - 2)),
                     -2 * ctheta * stheta * (3 * ctheta2 + 2) /
@@ -47,14 +48,42 @@ void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
                                                      core::Vector3f& vel,
                                                      core::Vector3f& acc) const {
   using namespace core;
-  float theta = t * scaling_;
+  float scaling = (2 * M_PI / T_);
+  float theta   = t * scaling;
 
   float ctheta = std::cos(theta);
   float stheta = std::sin(theta);
 
   pos << r * Vector3f(ctheta, stheta, 0.0);
-  vel << scaling_ * r * Vector3f(-stheta, ctheta, 0.0);
-  acc << scaling_ * scaling_ * r * Vector3f(-ctheta, -stheta, 0.0);
+  vel << scaling * r * Vector3f(-stheta, ctheta, 0.0);
+  acc << scaling * scaling * r * Vector3f(-ctheta, -stheta, 0.0);
+}
+
+const float l     = 10;
+const float theta = 0;
+const float v0    = 0.1;
+void test_imu::SE3StraightTrajectory::sampleTrajectory(float t,
+                                                       srrg2_core::Vector3f& pos,
+                                                       srrg2_core::Vector3f& vel,
+                                                       srrg2_core::Vector3f& acc) const {
+  using namespace core;
+
+  core::Vector3f end(l * std::cos(theta), l * sin(theta), 0);
+  float scaling = 1 / T_;
+  float s       = t / T_;
+  float s2      = s * s;
+  float s3      = s2 * s;
+  float s4      = s3 * s;
+  float s5      = s4 * s;
+
+  pos << (6 * (1 - v0) * s5 - 15 * (1 - v0) * s4 + 10 * (1 - v0) * s3 + v0 * s) * (end);
+  vel << (30 * (1 - v0) * s4 - 60 * (1 - v0) * s3 + 30 * (1 - v0) * s2 + v0) * (end) *scaling;
+  acc << (120 * (1 - v0) * s3 - 180 * (1 - v0) * s2 + 60 * (1 - v0) * s) * (end) *scaling * scaling;
+
+  // DEBUG version: imu measurements all zero
+  // pos << s * (end);
+  // vel << scaling * (end);
+  // acc << scaling * scaling * 0 * (end);
 }
 
 void SE3PlanarTrajectory::getPoseMeasurement(float t,
@@ -73,6 +102,8 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
   // compute the tangent vector to the curve
   float v_norm = vel.norm();
 
+  if ((std::fabs(v_norm) < 1e-8))
+    throw std::runtime_error("velocity appears to be zero ");
   Vector3f tangent = vel / v_norm;
 
   Vector3f z_vers(0, 0, 1);
@@ -90,7 +121,6 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
 
   // Measurement
   // linear acceleration in moving frame
-  // measurement.acceleration = pose.linear() // i know there is no scaling_
   const Matrix3f& R        = pose.rotation();
   measurement.acceleration = R.transpose() * acc;
 
