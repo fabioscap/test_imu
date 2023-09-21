@@ -11,10 +11,10 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
   if (measurements_.size() == 0) {
     throw std::runtime_error("ImuPreintegrator::preintegrate| call reset once before preintegrate");
   }
-  ImuMeasurement& m = measurements_.back();
+  ImuMeasurement m = measurements_.back();
   measurements_.push_back(m_new);
 
-  float dt = m.timestamp - t_;
+  float dt = m_new.timestamp - t_;
   if (dt < 0)
     throw std::runtime_error("vaffanculo");
 
@@ -24,7 +24,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
 
   // update the position
   auto dv = delta_R_ * (acc_c) *dt;
-  delta_p_ += (delta_v_ + 0.5 * dv) * dt;
+  delta_p_ += delta_v_ * dt + 0.5 * delta_R_ * acc_c * dt * dt;
 
   // update the velocity
   delta_v_ += dv;
@@ -53,8 +53,29 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
 
   sigma_.block<9, 9>(0, 0).noalias() =
     A_ * sigma_.block<9, 9>(0, 0) * A_.transpose() + B_ * sigma_imu_ * B_.transpose();
+
+  t_ = m_new.timestamp;
 }
 
-void test_imu::ImuPreintegrator::reset(const ImuMeasurement& measurement) {
-  std::cout << "ano\n";
+void ImuPreintegrator::reset(const ImuMeasurement& measurement) {
+  measurements_.clear();
+  measurements_.push_back(measurement);
+  t_ = measurement.timestamp;
+  // initialize biases
+
+  // set imu covariance matrix
+}
+
+void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
+                                     const core::Vector3f& vi,
+                                     core::Isometry3f& Tf,
+                                     core::Vector3f& vf) const {
+  Tf.setIdentity();
+
+  float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
+
+  vf = Ti.linear() * delta_v_ + vi;
+
+  Tf.linear()      = Ti.linear() * delta_R_;
+  Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
 }

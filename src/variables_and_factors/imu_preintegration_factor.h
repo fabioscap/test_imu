@@ -39,6 +39,21 @@ namespace test_imu {
     // set the first measurement, the initial covariance and the biases
     void reset(const ImuMeasurement& measurement);
 
+    const core::Matrix3f& delta_R() const {
+      return delta_R_;
+    }
+    const core::Vector3f& delta_p() const {
+      return delta_p_;
+    }
+    const core::Vector3f& delta_v() const {
+      return delta_v_;
+    }
+
+    void getPrediction(const core::Isometry3f& Ti,
+                       const core::Vector3f& vi,
+                       core::Isometry3f& Tf,
+                       core::Vector3f& vf) const;
+
   protected:
     std::vector<ImuMeasurement> measurements_;
 

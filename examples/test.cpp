@@ -1,13 +1,29 @@
-#include <Eigen/Dense>
-#include <iostream>
+#include <srrg_geometry/geometry3d.h>
+
+#include "synthetic/synthetic.h"
+
+#include "variables_and_factors/imu_preintegration_factor.h"
+
+#include <fstream>
 
 int main() {
-  Eigen::Matrix<float, 10, 10> big_matrix = Eigen::Matrix<float, 10, 10>::Zero();
+  using namespace test_imu;
+  using TrajectoryType = SE3StraightTrajectory;
+  float T              = 10;
+  float freq           = 10;
 
-  Eigen::Block<Eigen::Matrix<float, 10, 10>, 3, 3> merda = big_matrix.block<3, 3>(1, 1);
+  std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
+  FakeImu imu(traj, freq, 102030);
 
-  merda(1, 1) = 10;
+  std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>> data;
 
-  std::cout << merda * Eigen::Vector3f::Ones() << "\n";
-  std::cout << big_matrix << "\n" << merda << std::endl;
+  core::Vector3f pos, vel, acc;
+
+  for (float t = 0; t < T; t += 0.1) {
+    traj->sampleTrajectory(t, pos, vel, acc);
+    std::cout << "pos: " << pos.transpose() << "\n";
+    std::cout << "vel: " << vel.transpose() << "\n";
+    std::cout << "acc: " << acc.transpose() << "\n";
+    std::cout << "-\n";
+  }
 }

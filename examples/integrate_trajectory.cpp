@@ -13,7 +13,7 @@ int main() {
   std::ofstream out_pred("/workspace/src/test_imu/examples/output_pred.txt");
   std::ofstream out_gt("/workspace/src/test_imu/examples/output_gt.txt");
   float T    = 10;
-  float freq = 100;
+  float freq = 10;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
@@ -60,32 +60,42 @@ int main() {
     pose.linear()      = R;
     meas               = new_meas;
     t                  = new_meas.timestamp;
-  }
-  */
+    std::cout << vel.x() << " " << vel.y() << "\n";
+    std::cout << velg.x() << " " << velg.y() << "\n";
+    std::cout << "---\n";
+  }*/
 
   // imu preintegration
   ImuPreintegrator integrator;
+
+  core::Isometry3f initial_pose;
   for (size_t i = 0; i < data.size(); ++i) {
     if (i == 0) {
-      pose = data.at(i).second;
-      t    = meas.timestamp;
+      initial_pose = data.at(i).second;
+      meas         = data.at(i).first;
+      integrator.reset(meas);
       srrg2_core::Vector3f pos, acc;
-
-      integrator.reset(data.at(i).first);
-
-      imu.trajectory().sampleTrajectory(t, pos, vel, acc);
-      out_gt << data.at(i).second.matrix() << "\n";
-      out_pred << pose.matrix() << "\n";
+      imu.trajectory().sampleTrajectory(meas.timestamp, pos, vel, acc);
+      out_gt << initial_pose.matrix() << "\n";
+      out_pred << initial_pose.matrix() << "\n";
       continue;
     }
+
+    ImuMeasurement new_meas = data.at(i).first;
+    integrator.preintegrate(new_meas);
+
+    t = new_meas.timestamp;
+    srrg2_core::Vector3f posg, velg, accg;
+
+    imu.trajectory().sampleTrajectory(meas.timestamp, posg, velg, accg);
+    core::Isometry3f pose;
+    core::Vector3f vel_now;
+
+    integrator.getPrediction(initial_pose, vel, pose, vel_now);
+
     out_gt << data.at(i).second.matrix() << "\n";
     out_pred << pose.matrix() << "\n";
 
-    // srrg2_core::Isometry3f& T = data.at(i).second;
-    ImuMeasurement& new_meas = data.at(i).first;
-
-    integrator.preintegrate(new_meas);
-
-    // pose = ...
+    meas = new_meas;
   }
 }
