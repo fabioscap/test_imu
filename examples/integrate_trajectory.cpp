@@ -2,7 +2,7 @@
 
 #include "synthetic/synthetic.h"
 
-#include "variables_and_factors/imu_preintegration_factor.h"
+#include "imu_preintegrator/imu_preintegrator.h"
 
 #include <fstream>
 

@@ -1,81 +1,25 @@
 #include "imu_preintegration_factor.h"
 
-#include <srrg_geometry/geometry3d.h>
+// #include <srrg_solver/solver_core/ad_error_factor_impl.cpp>
+// #include <srrg_solver/solver_core/error_factor_impl.cpp>
+#include <srrg_solver/solver_core/instance_macros.h>
 
-using namespace test_imu;
+namespace srrg2_solver {
+  ImuPreintegrationFactorAD::ADErrorVectorType
+  ImuPreintegrationFactorAD::operator()(ImuPreintegrationFactorAD::VariableTupleType& vars) {
+    const Isometry3_<DualValuef>& Ti = vars.at<0>()->adEstimate();
+    const Vector3_<DualValuef>& vi   = vars.at<1>()->adEstimate();
 
-void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
-  // perform preintegration up until m.timestamp
-  // therefore the measurement m is used in the next
-  // call to preintegrate (maybe we should use the previous dt?)
-  if (measurements_.size() == 0) {
-    throw std::runtime_error("ImuPreintegrator::preintegrate| call reset once before preintegrate");
+    const Isometry3_<DualValuef>& Tj = vars.at<2>()->adEstimate();
+    const Vector3_<DualValuef>& vj   = vars.at<3>()->adEstimate();
+
+    const Vector3_<DualValuef>& bias_acc_i  = vars.at<4>()->adEstimate();
+    const Vector3_<DualValuef>& bias_acc_j  = vars.at<5>()->adEstimate();
+    const Vector3_<DualValuef>& bias_gyro_i = vars.at<6>()->adEstimate();
+    const Vector3_<DualValuef>& bias_gyro_j = vars.at<7>()->adEstimate();
+    return ImuPreintegrationFactorAD::ADErrorVectorType();
   }
-  ImuMeasurement m = measurements_.back();
-  measurements_.push_back(m_new);
 
-  float dt = m_new.timestamp - t_;
-  if (dt < 0)
-    throw std::runtime_error("vaffanculo");
-
-  // correct the measurements
-  core::Vector3f acc_c     = m.acceleration - bias_acc_;
-  core::Vector3f ang_vel_c = m.angular_vel - bias_gyro_;
-
-  // update the position
-  auto dv = delta_R_ * (acc_c) *dt;
-  delta_p_ += delta_v_ * dt + 0.5 * delta_R_ * acc_c * dt * dt;
-
-  // update the velocity
-  delta_v_ += dv;
-
-  auto Jr = core::geometry3d::expMapSO3(static_cast<core::Vector3f>(dt * ang_vel_c));
-
-  // update orientation
-  delta_R_ *= Jr;
-
-  core::fixRotation(delta_R_);
-
-  // covariance matrix update through iterative first order propagation
-  A_.block<3, 3>(0, 0) = delta_R_.transpose();
-
-  auto tmp = -delta_R_ * dt * core::geometry3d::skew(acc_c);
-
-  // A_ ...
-  A_.block<3, 3>(3, 0) = tmp;
-  A_.block<3, 3>(6, 0) = tmp * 0.5 * dt;
-  A_.block<3, 3>(6, 3) *= dt;
-
-  // B_ ...
-  B_.block<3, 3>(0, 0) = Jr * dt;
-  B_.block<3, 3>(3, 3) = delta_R_ * dt;
-  B_.block<3, 3>(6, 3) = 0.5 * delta_R_ * dt * dt;
-
-  sigma_.block<9, 9>(0, 0).noalias() =
-    A_ * sigma_.block<9, 9>(0, 0) * A_.transpose() + B_ * sigma_imu_ * B_.transpose();
-
-  t_ = m_new.timestamp;
-}
-
-void ImuPreintegrator::reset(const ImuMeasurement& measurement) {
-  measurements_.clear();
-  measurements_.push_back(measurement);
-  t_ = measurement.timestamp;
-  // initialize biases
-
-  // set imu covariance matrix
-}
-
-void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
-                                     const core::Vector3f& vi,
-                                     core::Isometry3f& Tf,
-                                     core::Vector3f& vf) const {
-  Tf.setIdentity();
-
-  float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
-
-  vf = Ti.linear() * delta_v_ + vi;
-
-  Tf.linear()      = Ti.linear() * delta_R_;
-  Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
-}
+  // INSTANTIATE(ImuPreintegrationFactorAD)
+  BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorAD)
+} // namespace srrg2_solver
