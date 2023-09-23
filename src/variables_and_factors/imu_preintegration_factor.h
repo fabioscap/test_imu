@@ -1,4 +1,6 @@
-#include <common/common.h>
+#include "common/common.h"
+
+#include "imu_preintegrator/imu_preintegrator.h"
 
 #include <srrg_solver/solver_core/ad_error_factor.h>
 #include <srrg_solver/solver_core/error_factor.h>
@@ -9,9 +11,20 @@
 
 namespace srrg2_solver {
 
-  using namespace srrg2_core;
+  class ImuPreintegrationFactorBase {
+    using Measurement = test_imu::PreintegratedImuMeasurement;
 
-  class ImuPreintegrationFactorBase {};
+  public:
+    // inline Measurement& measurement() {
+    //   return pm_;
+    //  }
+
+  protected:
+    // Measurement pm_;
+
+    // gravity vector
+    core::Vector3f grav_;
+  };
 
   class ImuPreintegrationFactor : public ErrorFactor_<15,
                                                       VariableSE3QuaternionRight, // pose_from
@@ -63,6 +76,14 @@ namespace srrg2_solver {
     ADErrorVectorType operator()(VariableTupleType& vars) override;
 
   protected:
+    // TODO
+    // preintegrated measurement must become dual we do not want to copy from integrator to
+    // measurement AND call convertMatrix
+    // 1) blast PrientegratedImuMeasurement and create
+    // setMeasurement(const ImuPreintegrator&)
+    //
+    // 2) embed PreintegratedImuMeasurement into integrator and make it do side effect on that
+    // (maybe better)
   };
 
 } // namespace srrg2_solver
