@@ -2,9 +2,9 @@
 
 #include <srrg_geometry/geometry3d.h>
 
-#define PHIidx 0 // phi
-#define Vidx 3   // vel
-#define Pidx 6   // pos
+#define PHIidx 3 // phi
+#define Vidx 9   // vel
+#define Pidx 0   // pos
 #define BAidx 9  // bias acc
 #define BGidx 12 // bias gyro
 
@@ -17,16 +17,8 @@
 
 using namespace test_imu;
 
-void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
-  if (measurements_.size() == 0) {
-    throw std::runtime_error("ImuPreintegrator::preintegrate| call reset once before preintegrate");
-  }
-  ImuMeasurement m = measurements_.back();
-  measurements_.push_back(m_new);
-
-  float dt = m_new.timestamp - t_;
-  if (dt < 0)
-    throw std::runtime_error("vaffanculo");
+void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
+  measurements_.push_back(m);
 
   // correct the measurements
   core::Vector3f acc_c     = m.acceleration - bias_acc_;
@@ -50,7 +42,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
   // we also include the initial covariance of the estimate in the first order propagation
 
   // A_ ...
-  A_.setIdentity();
+  A_.setIdentity(); // necessary?
   // dphi_dphi
   A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
   // dphi_dv: 0, dphi_dp: 0
@@ -72,7 +64,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
   // dbacc_dv: 0, dbacc_dp: 0, dbacc_dbgyro: 0, dbacc_dbacc: I
 
   // B_ ...
-  B_.setZero();
+  B_.setZero(); // necessary?
   // dphi_dgyro_noise
   B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
   // dphi_dacc_noise: 0,dphi_dbgyro_noise: 0, dphi_dbacc_noise: 0
@@ -99,21 +91,18 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
   B_.block<3, 3>(BAidx, NBAidx) = core::Matrix3f::Identity();
   // dbacc_dbgyro_noise_init: 0, dbacc_dbacc_noise_init: 0
 
-  // we need discretize the covariances
-  // see Optimal state estimation 8.1
-  // or https://github.com/borglab/gtsam/blob/develop/doc/ImuFactor.pdf
-
   // TODO B is sparse and sigma_noise_ is block diagonal
   // it is possible to do this much quicker
-  Eigen::MatrixXf scaling               = Eigen::MatrixXf::Zero(18, 18);
-  scaling.block<3, 3>(NGidx, NGidx)     = Eigen::Matrix3f::Ones() / dt;
-  scaling.block<3, 3>(NAidx, NAidx)     = Eigen::Matrix3f::Ones() / dt;
-  scaling.block<3, 3>(NBGIidx, NBGIidx) = Eigen::Matrix3f::Ones() / dt;
-  scaling.block<3, 3>(NBAIidx, NBAIidx) = Eigen::Matrix3f::Ones() / dt;
-  scaling.block<3, 3>(NBGidx, NBGidx)   = Eigen::Matrix3f::Ones() * dt;
-  scaling.block<3, 3>(NBAidx, NBAidx)   = Eigen::Matrix3f::Ones() * dt;
+  scaling_.setZero(); // necessary?
+  // it can also be precomputed if dt is constant
+  scaling_.block<3, 3>(NGidx, NGidx)     = Eigen::Matrix3f::Ones() / dt;
+  scaling_.block<3, 3>(NAidx, NAidx)     = Eigen::Matrix3f::Ones() / dt;
+  scaling_.block<3, 3>(NBGIidx, NBGIidx) = Eigen::Matrix3f::Ones() / dt;
+  scaling_.block<3, 3>(NBAIidx, NBAIidx) = Eigen::Matrix3f::Ones() / dt;
+  scaling_.block<3, 3>(NBGidx, NBGidx)   = Eigen::Matrix3f::Ones() * dt;
+  scaling_.block<3, 3>(NBAidx, NBAidx)   = Eigen::Matrix3f::Ones() * dt;
 
-  sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling * sigma_noise_ * B_.transpose();
+  sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
 
   /* bias correction jacobians */
   // Position
@@ -140,13 +129,12 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m_new) {
   delta_R_ *= dR;
   core::fixRotation(delta_R_);
 
-  t_ = m_new.timestamp;
+  t_ = m.timestamp + dt;
 }
 
-void ImuPreintegrator::reset(const ImuMeasurement& measurement) {
+void ImuPreintegrator::reset() {
   measurements_.clear();
-  measurements_.push_back(measurement);
-  t_ = measurement.timestamp;
+
   // initialize biases
 
   // set imu covariance matrix
@@ -164,4 +152,24 @@ void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
 
   Tf.linear()      = Ti.linear() * delta_R_;
   Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
+}
+
+void ImuPreintegrator::getMeasurement(PreintegratedImuMeasurement& pm) const {
+  if (measurements_.size() == 0)
+    throw std::runtime_error(
+      "ImuPreintegrator::getMeasurementAndReset| preintegrator has no measurements");
+  pm.dT      = t_ - measurements_.at(0).timestamp;
+  pm.delta_p = delta_p_;
+  pm.delta_R = delta_R_;
+  pm.delta_v = delta_v_;
+  pm.sigma   = sigma_;
+
+  pm.bias_acc  = bias_acc_;
+  pm.bias_gyro = bias_gyro_;
+
+  pm.dR_db_gyro = dR_db_gyro_;
+  pm.dv_db_acc  = dv_db_acc_;
+  pm.dv_db_gyro = dv_db_gyro_;
+  pm.dp_db_acc  = dp_db_acc_;
+  pm.dp_db_gyro = dp_db_gyro_;
 }
