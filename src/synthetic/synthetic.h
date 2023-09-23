@@ -82,6 +82,10 @@ namespace test_imu {
       return *trajectory_;
     }
 
+    inline const float freq() const {
+      return freq_;
+    }
+
   protected:
     float freq_; // the frequency at which a new measurement becomes available
 

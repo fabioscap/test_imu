@@ -67,13 +67,15 @@ int main() {
 
   // imu preintegration
   ImuPreintegrator integrator;
+  float dt = 1 / imu.freq();
+  std::cout << "dt: " << dt << std::endl;
 
   core::Isometry3f initial_pose;
   for (size_t i = 0; i < data.size(); ++i) {
     if (i == 0) {
       initial_pose = data.at(i).second;
       meas         = data.at(i).first;
-      integrator.reset(meas);
+      integrator.preintegrate(meas, dt);
       srrg2_core::Vector3f pos, acc;
       imu.trajectory().sampleTrajectory(meas.timestamp, pos, vel, acc);
       out_gt << initial_pose.matrix() << "\n";
@@ -82,12 +84,10 @@ int main() {
     }
 
     ImuMeasurement new_meas = data.at(i).first;
-    integrator.preintegrate(new_meas);
+    integrator.preintegrate(new_meas, dt);
 
     t = new_meas.timestamp;
-    srrg2_core::Vector3f posg, velg, accg;
 
-    imu.trajectory().sampleTrajectory(meas.timestamp, posg, velg, accg);
     core::Isometry3f pose;
     core::Vector3f vel_now;
 
