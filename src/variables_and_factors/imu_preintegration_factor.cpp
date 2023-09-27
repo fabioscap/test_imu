@@ -1,11 +1,13 @@
 #include "imu_preintegration_factor.h"
 
-// #include <srrg_solver/solver_core/ad_error_factor_impl.cpp>
-// #include <srrg_solver/solver_core/error_factor_impl.cpp>
+// include these two files otherwise nothing works and pia foco
+#include <srrg_solver/solver_core/ad_error_factor_impl.cpp>
+#include <srrg_solver/solver_core/error_factor_impl.cpp>
+
 #include <srrg_solver/solver_core/instance_macros.h>
 
 namespace srrg2_solver {
-  /*
+
   ImuPreintegrationFactorAD::ADErrorVectorType
   ImuPreintegrationFactorAD::operator()(ImuPreintegrationFactorAD::VariableTupleType& vars) {
     const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate();
@@ -63,7 +65,6 @@ namespace srrg2_solver {
 
     setInformationMatrix(preintegrator.sigma().inverse());
   }
-*/
-  // INSTANTIATE(ImuPreintegrationFactorAD)
-  // BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorAD)
+
+  BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorAD)
 } // namespace srrg2_solver
