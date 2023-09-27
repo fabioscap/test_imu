@@ -3,6 +3,8 @@
 #include <Eigen/Dense>
 #include <srrg_geometry/geometry_defs.h>
 
+#include <memory>
+
 namespace test_imu {
 
   namespace core = srrg2_core;

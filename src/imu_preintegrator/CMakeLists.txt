@@ -1,4 +1,4 @@
-add_library(imu_preintegrator
+add_library(imu_preintegrator SHARED
 imu_preintegrator.h
 imu_preintegrator.cpp)
 

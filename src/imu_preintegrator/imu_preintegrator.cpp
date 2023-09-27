@@ -2,9 +2,9 @@
 
 #include <srrg_geometry/geometry3d.h>
 
-#define PHIidx 3 // phi
-#define Vidx 9   // vel
-#define Pidx 0   // pos
+#define PHIidx 0 // phi
+#define Vidx 3   // vel
+#define Pidx 6   // pos
 #define BAidx 9  // bias acc
 #define BGidx 12 // bias gyro
 
@@ -32,7 +32,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
 
   /* covariance matrix update through iterative first order propagation */
-  // we do it before updating the estimates because it uses old delta_R_
+  // we do it before updating the estimates because it uses old delta_R
 
   // the biases jacobians are the same as the noise jacobians because
   // acc = acc_tilde - bias - noise
@@ -129,7 +129,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   delta_R_ *= dR;
   core::fixRotation(delta_R_);
 
-  t_ = m.timestamp + dt;
+  dT_ += dt;
 }
 
 void ImuPreintegrator::reset() {
@@ -143,7 +143,7 @@ void ImuPreintegrator::reset() {
 void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
                                      const core::Vector3f& vi,
                                      core::Isometry3f& Tf,
-                                     core::Vector3f& vf) const {
+                                     core::Vector3f& vf) {
   Tf.setIdentity();
 
   float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
@@ -152,24 +152,4 @@ void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
 
   Tf.linear()      = Ti.linear() * delta_R_;
   Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
-}
-
-void ImuPreintegrator::getMeasurement(PreintegratedImuMeasurement& pm) const {
-  if (measurements_.size() == 0)
-    throw std::runtime_error(
-      "ImuPreintegrator::getMeasurementAndReset| preintegrator has no measurements");
-  pm.dT      = t_ - measurements_.at(0).timestamp;
-  pm.delta_p = delta_p_;
-  pm.delta_R = delta_R_;
-  pm.delta_v = delta_v_;
-  pm.sigma   = sigma_;
-
-  pm.bias_acc  = bias_acc_;
-  pm.bias_gyro = bias_gyro_;
-
-  pm.dR_db_gyro = dR_db_gyro_;
-  pm.dv_db_acc  = dv_db_acc_;
-  pm.dv_db_gyro = dv_db_gyro_;
-  pm.dp_db_acc  = dp_db_acc_;
-  pm.dp_db_gyro = dp_db_gyro_;
 }

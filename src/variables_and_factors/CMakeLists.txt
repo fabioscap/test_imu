@@ -1,7 +1,9 @@
-add_library(variables_and_factors
-            imu_preintegration_factor.h
+add_library(preintegration_factor SHARED
             imu_preintegration_factor.cpp)
 
-target_link_libraries(variables_and_factors
-                      srrg2_solver_core_library
-                      common)
+target_link_libraries(preintegration_factor PUBLIC
+  srrg2_solver_core_library
+  srrg2_solver_types3d_library
+  common
+  ${catkin_LIBRARIES}
+)

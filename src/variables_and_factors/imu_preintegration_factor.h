@@ -12,18 +12,12 @@
 namespace srrg2_solver {
 
   class ImuPreintegrationFactorBase {
-    using Measurement = test_imu::PreintegratedImuMeasurement;
-
   public:
     // inline Measurement& measurement() {
     //   return pm_;
     //  }
 
   protected:
-    // Measurement pm_;
-
-    // gravity vector
-    core::Vector3f grav_;
   };
 
   class ImuPreintegrationFactor : public ErrorFactor_<15,
@@ -70,20 +64,36 @@ namespace srrg2_solver {
                                     VariableVector3AD,            // bias_gyro_from
                                     VariableVector3AD>;           // bias_gyro_to
     // clang-format on
-    using ADErrorVectorType = BaseType::ADErrorVectorType;
-    using VariableTupleType = BaseType::VariableTupleType;
+    // using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
+    // using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
 
-    ADErrorVectorType operator()(VariableTupleType& vars) override;
+    using ADErrorVectorType = typename BaseType::ADErrorVectorType;
+    using VariableTupleType = typename BaseType::VariableTupleType;
+
+    ADErrorVectorType operator()(VariableTupleType& vars) {
+      return ADErrorVectorType();
+    }
+
+    // void setMeasurement(const test_imu::ImuPreintegrator& preintegrator);
 
   protected:
-    // TODO
-    // preintegrated measurement must become dual we do not want to copy from integrator to
-    // measurement AND call convertMatrix
-    // 1) blast PrientegratedImuMeasurement and create
-    // setMeasurement(const ImuPreintegrator&)
-    //
-    // 2) embed PreintegratedImuMeasurement into integrator and make it do side effect on that
-    // (maybe better)
-  };
+    // dMatrix3f delta_R_;
+    // dVector3f delta_v_;
+    // dVector3f delta_p_;
 
+    // nominal value for the biases
+    // dVector3f bias_acc_nom_;
+    // dVector3f bias_gyro_nom_;
+
+    // bias correction matrices
+    // dMatrix3f dR_db_gyro_;
+    // dMatrix3f dv_db_acc_;
+    // dMatrix3f dv_db_gyro_;
+    // dMatrix3f dp_db_acc_;
+    // dMatrix3f dp_db_gyro_;
+
+    // DualValuef dT_;
+
+    // dVector3f grav_;
+  };
 } // namespace srrg2_solver
