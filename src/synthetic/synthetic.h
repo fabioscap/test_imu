@@ -16,13 +16,13 @@ namespace test_imu {
     SE3PlanarTrajectory(float T) : T_(T){};
 
     virtual void sampleTrajectory(float t,
-                                  srrg2_core::Vector3f& pos,
-                                  srrg2_core::Vector3f& vel,
-                                  srrg2_core::Vector3f& acc) const {};
+                                  core::Vector3f& pos,
+                                  core::Vector3f& vel,
+                                  core::Vector3f& acc) const {};
 
     // The frame is always tangent to the curve with its x-axis,
     // and the z-axis always points up (you can add rotation if needed).
-    void getPoseMeasurement(float t, srrg2_core::Isometry3f& pose, ImuMeasurement& measurement);
+    void getPoseMeasurement(float t, core::Isometry3f& pose, ImuMeasurement& measurement);
 
     inline void setT(float T) {
       T_ = T;
@@ -42,9 +42,9 @@ namespace test_imu {
     }
 
     void sampleTrajectory(float t,
-                          srrg2_core::Vector3f& pos,
-                          srrg2_core::Vector3f& vel,
-                          srrg2_core::Vector3f& acc) const override;
+                          core::Vector3f& pos,
+                          core::Vector3f& vel,
+                          core::Vector3f& acc) const override;
   };
   class SE3CircleTrajectory : public SE3PlanarTrajectory {
   public:
@@ -52,9 +52,9 @@ namespace test_imu {
     }
 
     void sampleTrajectory(float t,
-                          srrg2_core::Vector3f& pos,
-                          srrg2_core::Vector3f& vel,
-                          srrg2_core::Vector3f& acc) const override;
+                          core::Vector3f& pos,
+                          core::Vector3f& vel,
+                          core::Vector3f& acc) const override;
   };
 
   class SE3StraightTrajectory : public SE3PlanarTrajectory {
@@ -63,19 +63,19 @@ namespace test_imu {
     }
 
     void sampleTrajectory(float t,
-                          srrg2_core::Vector3f& pos,
-                          srrg2_core::Vector3f& vel,
-                          srrg2_core::Vector3f& acc) const override;
+                          core::Vector3f& pos,
+                          core::Vector3f& vel,
+                          core::Vector3f& acc) const override;
   };
 
   class FakeImu {
   public:
     FakeImu(std::shared_ptr<SE3PlanarTrajectory> traj_, float freq, int seed = std::time(0)) :
       freq_(freq), trajectory_(traj_), rnd_gen_(seed) {
-      srrg2_core::Vector3f pos, vel, acc;
+      core::Vector3f pos, vel, acc;
     }
 
-    void generateData(std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>>& data,
+    void generateData(std::vector<std::pair<ImuMeasurement, core::Isometry3f>>& data,
                       bool noise = false);
 
     inline const SE3PlanarTrajectory& trajectory() const {
@@ -84,6 +84,19 @@ namespace test_imu {
 
     inline const float freq() const {
       return freq_;
+    }
+
+    inline const core::Vector3f& bias_acc() const {
+      return ba_;
+    }
+    inline const core::Vector3f& bias_gyro() const {
+      return bg_;
+    }
+    inline void bias_acc(const core::Vector3f& ba) {
+      ba_ = ba;
+    }
+    inline void bias_gyro(const core::Vector3f& bg) {
+      bg_ = bg;
     }
 
   protected:
@@ -96,6 +109,9 @@ namespace test_imu {
 
     std::shared_ptr<SE3PlanarTrajectory> trajectory_;
     std::mt19937 rnd_gen_;
+
+    core::Vector3f ba_ = core::Vector3f::Zero();
+    core::Vector3f bg_ = core::Vector3f::Zero();
   };
 
 } // namespace test_imu

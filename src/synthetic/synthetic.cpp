@@ -148,8 +148,8 @@ void test_imu::FakeImu::generateData(std::vector<std::pair<ImuMeasurement, core:
   data.resize(num);
 
   // initialize biases
-  Vector3f ba = 1e-8 * Vector3f::Ones();
-  Vector3f bg = 1e-8 * Vector3f::Ones();
+  Vector3f ba_ = 1e-8 * Vector3f::Ones();
+  Vector3f bg_ = 1e-8 * Vector3f::Ones();
 
   std::normal_distribution<double> std_dist(0.0, 1.0);
   std::uniform_real_distribution<double> uni_dist(-1.0, 1.0);
@@ -163,12 +163,12 @@ void test_imu::FakeImu::generateData(std::vector<std::pair<ImuMeasurement, core:
     // noise
     // bias is assumed constant between keyframes in 2015 paper (TODO)
     if (noise) {
-      ba += noise_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
-      bg += noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      ba_ += noise_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      bg_ += noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.acceleration +=
-        ba + noise_acc_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
+        ba_ + noise_acc_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
       meas.angular_vel +=
-        bg + noise_gyro_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
+        bg_ + noise_gyro_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
     }
   }
 }
