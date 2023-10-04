@@ -7,7 +7,7 @@ master thesis
   - [x] straight
 
 - [ ] IMU preintegrator
-  - [ ] Full (+ bias)  ** Singular covariance **
+  - [ ] Full (+ bias)  **Singular covariance**
   - [x] Slim (no bias)
 
 - [ ] IMU Factor 
