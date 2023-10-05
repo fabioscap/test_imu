@@ -22,7 +22,10 @@ namespace test_imu {
 
     // The frame is always tangent to the curve with its x-axis,
     // and the z-axis always points up (you can add rotation if needed).
-    void getPoseMeasurement(float t, core::Isometry3f& pose, ImuMeasurement& measurement);
+    void getPoseMeasurement(float t,
+                            core::Isometry3f& pose,
+                            core::Vector3f& vel,
+                            ImuMeasurement& measurement);
 
     inline void setT(float T) {
       T_ = T;
@@ -34,6 +37,13 @@ namespace test_imu {
 
   protected:
     float T_; // The duration of the trajectory
+
+    // trajectory transformation parameters
+    core::Matrix3f R_ = Rx(0.0f);
+    core::Vector3f t_ = core::Vector3f(0, 0, 0);
+
+    // body frame transformation parameters
+    core::Matrix3f R_b_ = Ry(0.0f);
   };
 
   class SE3EightTrajectory : public SE3PlanarTrajectory {
@@ -75,8 +85,9 @@ namespace test_imu {
       core::Vector3f pos, vel, acc;
     }
 
-    void generateData(std::vector<std::pair<ImuMeasurement, core::Isometry3f>>& data,
-                      bool noise = false);
+    void
+    generateData(std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>>& data,
+                 bool noise = false);
 
     inline const SE3PlanarTrajectory& trajectory() const {
       return *trajectory_;

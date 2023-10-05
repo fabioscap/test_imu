@@ -8,12 +8,14 @@
 #define BAidx 9  // bias acc
 #define BGidx 12 // bias gyro
 
-#define NGidx 0    // noise gyro
-#define NAidx 3    // noise acc
-#define NBGidx 6   // bias random walk noise gyro
-#define NBAidx 9   // bias random walk noise acc
-#define NBGIidx 12 // bias initial uncertainty gyro
-#define NBAIidx 15 // bias initial uncertainty acc
+#define NGidx 0  // noise gyro
+#define NAidx 3  // noise acc
+#define NBGidx 6 // bias random walk noise gyro
+#define NBAidx 9 // bias random walk noise acc
+
+// Those two values make the covariance singular
+// #define NBGIidx 12 // bias initial uncertainty gyro
+// #define NBAIidx 15 // bias initial uncertainty acc
 
 using namespace test_imu;
 
@@ -45,7 +47,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   A_.setIdentity(); // necessary?
   // dphi_dphi
   A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
-  // dphi_dv: 0, dphi_dp: 0
+  // dphi_dv: 0, dphi_dp: 0, dphi_dbacc: 0
   // dphi_dbgyro
   A_.block<3, 3>(PHIidx, BGidx) = dt * Jr;
   // dv_dphi
@@ -56,7 +58,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   // dp_dphi
   A_.block<3, 3>(Pidx, PHIidx) = -0.5 * delta_R_ * acc_skew * dt * dt;
   // dp_dv
-  A_.block<3, 3>(Pidx, Vidx) *= dt;
+  A_.block<3, 3>(Pidx, Vidx) = core::Matrix3f::Identity() * dt;
   // dp_dp: I , dp_dbgyro: 0
   // dp_dbacc
   A_.block<3, 3>(Pidx, BAidx) = 0.5 * delta_R_ * dt * dt;
@@ -69,19 +71,19 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
   // dphi_dacc_noise: 0,dphi_dbgyro_noise: 0, dphi_dbacc_noise: 0
   // dphi_dbgyro_noise_init
-  B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
+  // B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
   // dphi_dbacc_noise_init: 0, dv_dgyro_noise: 0
   // dv_dacc_noise
   B_.block<3, 3>(Vidx, NAidx) = delta_R_ * dt;
   // dv_dbgyro_noise: 0, dv_dbacc_noise: 0, dv_dbgyro_noise_init: 0,
   // dv_dbacc_noise_init
-  B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
+  // B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
   // dp_dgyro_noise: 0
   // dp_dacc_noise
   B_.block<3, 3>(Pidx, NAidx) = 0.5 * delta_R_ * dt * dt;
   // dp_dbgyro_noise: 0, dp_dbacc_noise: 0, dp_dbgyro_noise_init: 0,
   // dp_dbacc_noise_init
-  B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
+  // B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
   // dbgyro_dgyro_noise: 0, dbgyro_dacc_noise: 0
   // dbgyro_dbgyro_noise:
   B_.block<3, 3>(BGidx, NBGidx) = core::Matrix3f::Identity();
@@ -93,17 +95,23 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
 
   // TODO B is sparse and sigma_noise_ is block diagonal
   // it is possible to do this much quicker
-  scaling_.setZero(); // necessary?
+  scaling_.setIdentity(); // necessary?
   // it can also be precomputed if dt is constant
-  scaling_.block<3, 3>(NGidx, NGidx)     = Eigen::Matrix3f::Ones() / dt;
-  scaling_.block<3, 3>(NAidx, NAidx)     = Eigen::Matrix3f::Ones() / dt;
-  scaling_.block<3, 3>(NBGIidx, NBGIidx) = Eigen::Matrix3f::Ones() / dt;
-  scaling_.block<3, 3>(NBAIidx, NBAIidx) = Eigen::Matrix3f::Ones() / dt;
-  scaling_.block<3, 3>(NBGidx, NBGidx)   = Eigen::Matrix3f::Ones() * dt;
-  scaling_.block<3, 3>(NBAidx, NBAidx)   = Eigen::Matrix3f::Ones() * dt;
+  scaling_.block<3, 3>(NGidx, NGidx) = Eigen::Matrix3f::Identity() / dt;
+  scaling_.block<3, 3>(NAidx, NAidx) = Eigen::Matrix3f::Identity() / dt;
+  // scaling_.block<3, 3>(NBGIidx, NBGIidx) = Eigen::Matrix3f::Identity() / dt;
+  // scaling_.block<3, 3>(NBAIidx, NBAIidx) = Eigen::Matrix3f::Identity() / dt;
+  scaling_.block<3, 3>(NBGidx, NBGidx) = Eigen::Matrix3f::Identity() * dt;
+  scaling_.block<3, 3>(NBAidx, NBAidx) = Eigen::Matrix3f::Identity() * dt;
 
+  /*   std::cout << "B:\n" << B_ << std::endl;
+    std::cout << "scaling_* sigma_noise_\n" << scaling_ * sigma_noise_ << "\n";
+    std::cout << "Det\n"
+              << (scaling_ * sigma_noise_).determinant() << "->"
+              << (B_ * scaling_ * sigma_noise_ * B_.transpose()).determinant() << "\n";
+   */
   sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
-
+  // sigma_ = CovType::Identity(state_dim, state_dim);
   /* bias correction jacobians */
   // Position
   dp_db_acc_ += dv_db_acc_ * dt - 0.5 * delta_R_ * dt * dt;

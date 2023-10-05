@@ -10,6 +10,13 @@
 #include "synthetic/synthetic.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 
+#include <type_traits>
+#include <typeinfo>
+
+#include <fstream>
+
+void dumpCov(const Eigen::MatrixXf& cov);
+
 // create two variables and a preintegration factor between them
 // then fix the first one and see if the second is optimized
 // to see if ADErrorFactor() is implemented correctly
@@ -17,11 +24,12 @@ int main() {
   using namespace srrg2_core;
   using namespace srrg2_solver;
   using namespace test_imu;
-  using TrajectoryType    = SE3EightTrajectory;
-  using PreintegratorType = ImuPreintegratorSlim;
-  using FactorType        = ImuPreintegrationFactorSlimAD;
+  using TrajectoryType = SE3EightTrajectory;
 
-  bool slim = true;
+  constexpr bool slim     = false;
+  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegrator>::type;
+  using FactorType =
+    std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
@@ -31,12 +39,12 @@ int main() {
   FactorGraphPtr graph(new FactorGraph);
 
   float T    = 10;
-  float freq = 500;
+  float freq = 100;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
 
-  std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>> data;
+  std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>> data;
   imu.generateData(data, false);
 
   VariableSE3QuaternionRightAD *pose_start, *pose_end;
@@ -64,8 +72,8 @@ int main() {
   if (!slim) {
     bias_acc_start->setStatus(VariableBase::Fixed);
     bias_gyro_start->setStatus(VariableBase::Fixed);
-    bias_acc_end->setStatus(VariableBase::Fixed);
-    bias_gyro_end->setStatus(VariableBase::Fixed);
+    // bias_acc_end->setStatus(VariableBase::Fixed);
+    // bias_gyro_end->setStatus(VariableBase::Fixed);
   }
   graph->addVariable(VariableBasePtr(pose_start));
   graph->addVariable(VariableBasePtr(pose_end));
@@ -104,20 +112,18 @@ int main() {
   float dt = 1 / imu.freq();
   std::cout << "dt: " << dt << std::endl;
 
-  float dT = T - 3 * dt;
+  float dT = 3;
 
   Isometry3f initial_pose;
   ImuMeasurement meas;
   size_t i;
   for (i = 0; i < data.size() - 1; ++i) {
     if (i == 0) {
-      initial_pose = data.at(i).second;
-      meas         = data.at(i).first;
+      initial_pose = std::get<2>(data.at(i));
+      meas         = std::get<0>(data.at(i));
       integrator.preintegrate(meas, dt);
-      srrg2_core::Vector3f pos, vel, acc;
-      imu.trajectory().sampleTrajectory(meas.timestamp, pos, vel, acc);
       pose_start->setEstimate(initial_pose);
-      vel_start->setEstimate(vel);
+      vel_start->setEstimate(std::get<1>(data.at(i)));
       if (!slim) {
         bias_acc_start->setEstimate(Vector3f::Zero());
         bias_gyro_start->setEstimate(Vector3f::Zero());
@@ -125,7 +131,8 @@ int main() {
 
       continue;
     }
-    meas = data.at(i).first;
+    meas = std::get<0>(data.at(i));
+
     if (meas.timestamp > dT)
       break;
     integrator.preintegrate(meas, dt);
@@ -148,13 +155,22 @@ int main() {
     std::cout << "sigma gay determinant:\n"
               << integrator.sigma().block<9, 9>(0, 0).determinant() << "\n";
   }
-  std::cout << "gt:\n" << data.at(i).second.matrix() << "\n";
+  std::cout << "gt:\n" << std::get<2>(data.at(i)).matrix() << "\n";
   std::cout << "estimate:\n" << pose_end->estimate().matrix() << "\n";
 
   std::cout << "rel pose t2v:\n"
-            << geometry3d::t2v(
-                 Isometry3f(data.at(i).second.matrix().inverse() * pose_end->estimate().matrix()))
+            << geometry3d::t2v(Isometry3f(std::get<2>(data.at(i)).matrix().inverse() *
+                                          pose_end->estimate().matrix()))
             << "\n";
 
+  dumpCov(integrator.sigma());
+
   return 0;
+}
+
+void dumpCov(const Eigen::MatrixXf& cov) {
+  // Save the covariance matrix to a data file
+  std::ofstream datafile("/workspace/src/test_imu/examples/covariance_matrix.txt");
+  datafile << cov;
+  datafile.close();
 }

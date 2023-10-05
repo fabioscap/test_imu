@@ -88,11 +88,12 @@ void test_imu::SE3StraightTrajectory::sampleTrajectory(float t,
 
 void SE3PlanarTrajectory::getPoseMeasurement(float t,
                                              core::Isometry3f& pose,
+                                             core::Vector3f& vel,
                                              ImuMeasurement& measurement) {
   using namespace core;
   pose.setIdentity();
 
-  Vector3f pos, vel, acc;
+  Vector3f pos, acc;
 
   sampleTrajectory(t, pos, vel, acc);
 
@@ -136,10 +137,33 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
   // expecting only wz != 0
   measurement.angular_vel << 0, 0, (vel(0) * acc(1) - vel(1) * acc(0)) / (v_norm * v_norm);
   measurement.timestamp = t;
+
+  // trasformazioneee
+
+  // pose
+  core::Isometry3f tf;
+  tf.setIdentity();
+  tf.linear()      = R_;
+  tf.translation() = t_;
+
+  core::Isometry3f tf_b;
+  tf_b.setIdentity();
+  tf_b.linear() = R_b_;
+
+  pose.linear() = pose.linear() * R_b_;
+
+  pose = tf * pose;
+
+  vel = R_ * vel;
+
+  // measurements
+  measurement.angular_vel  = R_b_.transpose() * measurement.angular_vel;
+  measurement.acceleration = R_b_.transpose() * measurement.acceleration;
 }
 
-void test_imu::FakeImu::generateData(std::vector<std::pair<ImuMeasurement, core::Isometry3f>>& data,
-                                     bool noise) {
+void test_imu::FakeImu::generateData(
+  std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>>& data,
+  bool noise) {
   using namespace core;
 
   int num  = trajectory_->T() * freq_;
@@ -156,15 +180,16 @@ void test_imu::FakeImu::generateData(std::vector<std::pair<ImuMeasurement, core:
 
   float t = 0;
   for (int i = 0; i < num; ++i, t += dt) {
-    Isometry3f& pose     = data.at(i).second;
-    ImuMeasurement& meas = data.at(i).first;
-
-    trajectory_->getPoseMeasurement(t, pose, meas);
+    Isometry3f& pose     = std::get<2>(data.at(i));
+    ImuMeasurement& meas = std::get<0>(data.at(i));
+    Vector3f& vel        = std::get<1>(data.at(i));
+    trajectory_->getPoseMeasurement(t, pose, vel, meas);
     // noise
     // bias is assumed constant between keyframes in 2015 paper (TODO)
     if (noise) {
       ba_ += noise_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
-      bg_ += noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      bg_ +=
+        noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.acceleration +=
         ba_ + noise_acc_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
       meas.angular_vel +=

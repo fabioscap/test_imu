@@ -18,32 +18,32 @@ int main() {
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
 
-  std::vector<std::pair<ImuMeasurement, srrg2_core::Isometry3f>> data;
+  std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>> data;
 
   imu.generateData(data);
 
   srrg2_core::Isometry3f pose;
   srrg2_core::Vector3f vel;
   float t              = 0;
-  ImuMeasurement& meas = data.at(0).first;
+  ImuMeasurement& meas = std::get<0>(data.at(0));
 
   // standard euler integration
   /*
   for (size_t i = 0; i < data.size(); ++i) {
     if (i == 0) {
-      pose = data.at(i).second;
+      pose = std::get<2>(data.at(i));
       t    = meas.timestamp;
       srrg2_core::Vector3f pos, acc;
       imu.trajectory().sampleTrajectory(t, pos, vel, acc);
-      out_gt << data.at(i).second.matrix() << "\n";
+      out_gt << std::get<2>(data.at(i)).matrix() << "\n";
       out_pred << pose.matrix() << "\n";
       continue;
     }
-    out_gt << data.at(i).second.matrix() << "\n";
+    out_gt << std::get<2>(data.at(i)).matrix() << "\n";
     out_pred << pose.matrix() << "\n";
 
-    // srrg2_core::Isometry3f& T = data.at(i).second;
-    ImuMeasurement& new_meas    = data.at(i).first;
+    // srrg2_core::Isometry3f& T = std::get<2>(data.at(i));
+    ImuMeasurement& new_meas    = std::get<0>(data.at(i));
     float dt                    = new_meas.timestamp - t;
     Eigen::Vector3f translation = pose.translation();
     srrg2_core::Matrix3f R      = pose.rotation();
@@ -74,17 +74,18 @@ int main() {
   core::Isometry3f initial_pose;
   for (size_t i = 0; i < data.size(); ++i) {
     if (i == 0) {
-      initial_pose = data.at(i).second;
-      meas         = data.at(i).first;
+      initial_pose = std::get<2>(data.at(i));
+      vel          = std::get<1>(data.at(i));
+      meas         = std::get<0>(data.at(i));
       integrator.preintegrate(meas, dt);
       srrg2_core::Vector3f pos, acc;
-      imu.trajectory().sampleTrajectory(meas.timestamp, pos, vel, acc);
+
       out_gt << initial_pose.matrix() << "\n";
       out_pred << initial_pose.matrix() << "\n";
       continue;
     }
 
-    ImuMeasurement new_meas = data.at(i).first;
+    ImuMeasurement new_meas = std::get<0>(data.at(i));
     integrator.preintegrate(new_meas, dt);
 
     t = new_meas.timestamp;
@@ -94,7 +95,7 @@ int main() {
 
     integrator.getPrediction(initial_pose, vel, pose, vel_now);
 
-    out_gt << data.at(i).second.matrix() << "\n";
+    out_gt << std::get<2>(data.at(i)).matrix() << "\n";
     out_pred << pose.matrix() << "\n";
 
     meas = new_meas;
