@@ -34,6 +34,11 @@ namespace test_imu {
     inline const float dT() const {return dT_;}
     // clang-format on
 
+    const void setNoiseGyroscope(const core::Vector3f& v);
+    const void setNoiseAccelerometer(const core::Vector3f& v);
+    const void setNoiseBiasGyroscope(const core::Vector3f& v);
+    const void setNoiseBiasAccelerometer(const core::Vector3f& v);
+
     // DEBUG function
     void getPrediction(const core::Isometry3f& Ti,
                        const core::Vector3f& vi,

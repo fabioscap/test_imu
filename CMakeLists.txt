@@ -11,7 +11,13 @@ find_package(catkin REQUIRED COMPONENTS
   srrg2_core_ros
   srrg2_solver
   srrg_cmake_modules
+  srrg2_qgl_viewport
 )
+
+include(${srrg_cmake_modules_INCLUDE_DIRS}/CMakeCompileOptions.txt)
+
+find_package(QGLViewer REQUIRED)
+find_package(GLUT REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS
@@ -25,12 +31,13 @@ catkin_package(
     EIGEN3
 )
 
-include(${srrg_cmake_modules_INCLUDE_DIRS}/CMakeCompileOptions.txt)
-
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${PROJECT_SOURCE_DIR}/src
+  ${QGLViewer_INCLUDE_DIR}
+  ${SRRG_QT_INCLUDE_DIRS}
+  ${GLUT_INCLUDE_DIRS}
 )
 
 # this is important. it tells cmake where to look for libraries

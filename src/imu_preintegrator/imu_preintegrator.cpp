@@ -14,8 +14,8 @@
 #define NBAidx 9 // bias random walk noise acc
 
 // Those two values make the covariance singular
-// #define NBGIidx 12 // bias initial uncertainty gyro
-// #define NBAIidx 15 // bias initial uncertainty acc
+#define NBGIidx 12 // bias initial uncertainty gyro
+#define NBAIidx 15 // bias initial uncertainty acc
 
 using namespace test_imu;
 
@@ -41,7 +41,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   // they are interchangeable
 
   // since preintegration needs biases, which are an estimation variable with associated covariance,
-  // we also include the initial covariance of the estimate in the first order propagation
+  // we also include the initial covariance of the estimate in the first order propagation // NO
 
   // A_ ...
   A_.setIdentity(); // necessary?
@@ -71,19 +71,19 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
   // dphi_dacc_noise: 0,dphi_dbgyro_noise: 0, dphi_dbacc_noise: 0
   // dphi_dbgyro_noise_init
-  // B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
+  B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
   // dphi_dbacc_noise_init: 0, dv_dgyro_noise: 0
   // dv_dacc_noise
   B_.block<3, 3>(Vidx, NAidx) = delta_R_ * dt;
   // dv_dbgyro_noise: 0, dv_dbacc_noise: 0, dv_dbgyro_noise_init: 0,
   // dv_dbacc_noise_init
-  // B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
+  B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
   // dp_dgyro_noise: 0
   // dp_dacc_noise
   B_.block<3, 3>(Pidx, NAidx) = 0.5 * delta_R_ * dt * dt;
   // dp_dbgyro_noise: 0, dp_dbacc_noise: 0, dp_dbgyro_noise_init: 0,
   // dp_dbacc_noise_init
-  // B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
+  B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
   // dbgyro_dgyro_noise: 0, dbgyro_dacc_noise: 0
   // dbgyro_dbgyro_noise:
   B_.block<3, 3>(BGidx, NBGidx) = core::Matrix3f::Identity();
@@ -143,9 +143,28 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
 void ImuPreintegrator::reset() {
   measurements_.clear();
 
-  // initialize biases
+  dT_ = 0;
 
-  // set imu covariance matrix
+  delta_p_ = core::Vector3f::Zero();
+  delta_R_ = core::Matrix3f::Identity();
+  delta_v_ = core::Vector3f::Zero();
+
+  sigma_ = CovType::Zero(state_dim, state_dim);
+
+  // nominal values for the bias
+  bias_acc_  = core::Vector3f::Zero();
+  bias_gyro_ = core::Vector3f::Zero();
+
+  // bias correction
+  dR_db_gyro_ = core::Matrix3f::Zero();
+  dv_db_acc_  = core::Matrix3f::Zero();
+  dv_db_gyro_ = core::Matrix3f::Zero();
+  dp_db_acc_  = core::Matrix3f::Zero();
+  dp_db_gyro_ = core::Matrix3f::Zero();
+
+  // allocate matrices for noise propagation
+  A_.setIdentity();
+  B_.setIdentity();
 }
 
 void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
@@ -160,4 +179,17 @@ void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
 
   Tf.linear()      = Ti.linear() * delta_R_;
   Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
+}
+
+const void ImuPreintegrator::setNoiseGyroscope(const core::Vector3f& v) {
+  sigma_noise_.block<3, 3>(NGidx, NGidx) = v.asDiagonal();
+}
+const void ImuPreintegrator::setNoiseAccelerometer(const core::Vector3f& v) {
+  sigma_noise_.block<3, 3>(NAidx, NAidx) = v.asDiagonal();
+}
+const void ImuPreintegrator::setNoiseBiasGyroscope(const core::Vector3f& v) {
+  sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.asDiagonal();
+}
+const void ImuPreintegrator::setNoiseBiasAccelerometer(const core::Vector3f& v) {
+  sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.asDiagonal();
 }

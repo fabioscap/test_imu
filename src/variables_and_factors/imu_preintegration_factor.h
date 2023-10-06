@@ -55,6 +55,8 @@ namespace srrg2_solver {
 
     void setMeasurement(const test_imu::ImuPreintegrator& preintegrator);
 
+    void _drawImpl(ViewerCanvasPtr canvas_) const override;
+
     inline void grav(const Vector3f& grav) {
       convertMatrix(grav_, grav);
     }

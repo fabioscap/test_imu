@@ -112,6 +112,9 @@ namespace srrg2_solver {
     // setInformationMatrix(Eigen::MatrixXf::Identity(9, 9));
   }
 
-  BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorAD)
-  BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorSlimAD)
+  void ImuPreintegrationFactorAD::_drawImpl(ViewerCanvasPtr canvas_) const {
+  }
+
+  INSTANTIATE(ImuPreintegrationFactorAD)
+  // BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorSlimAD)
 } // namespace srrg2_solver

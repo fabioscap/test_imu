@@ -1,5 +1,6 @@
 add_library(preintegration_factor SHARED
             imu_preintegration_factor.cpp
+            instances.cpp
             )
 
 target_link_libraries(preintegration_factor PUBLIC

@@ -16,6 +16,9 @@ def read_matrix_from_file(filename):
 if __name__ == '__main__':
     input_file = '../examples/covariance_matrix.txt'  # Replace with your input text file name
     matrix = read_matrix_from_file(input_file)
+
+    print("determinant: " )
+    print(np.linalg.det(matrix))
     if len(sys.argv) == 1:
 
         plt.matshow(matrix)
