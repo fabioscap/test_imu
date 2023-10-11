@@ -1,10 +1,8 @@
 #include "common.h"
+#include "manifold.h"
 #include <Eigen/Dense>
 
 namespace test_imu {
-
-  template <int dim>
-  using TangentType_ = core::Vector_<float, dim>;
 
   // Only what is needed for prediction. srrg2_solver does the update.
 
@@ -76,13 +74,6 @@ namespace test_imu {
     float k_     = 0;
 
     float lambda_ = alpha_ * alpha_ * (state_dim + k_);
-  };
-
-  template <typename DataType_, int dim_>
-  struct ManifoldBase {
-    static constexpr int dim = dim_;
-    using DataType           = DataType_;
-    using TangentType        = TangentType_<dim>;
   };
 
 } // namespace test_imu
