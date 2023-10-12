@@ -1,40 +1,25 @@
+#include "common/manifold.h"
 #include "common/ukf.h"
 #include <srrg_geometry/geometry3d.h>
 
 using namespace test_imu;
 
-using UKFType = UKF<core::Matrix3f, 3>;
-
-core::Matrix3f boxplusSO3(const core::Matrix3f& from, const core::Vector3f& dsp) {
-  core::Matrix3f R = from * core::geometry3d::expMapSO3(dsp);
-  core::fixRotation(R);
-  return R;
-}
-core::Vector3f boxminusSO3(const core::Matrix3f& from, const core::Matrix3f& to) {
-  core::Matrix3f R = from.transpose() * to;
-  return core::geometry3d::logMapSO3(R.eval());
-}
-core::Vector3f boxplusVector(const core::Vector3f& from, const core::Vector3f& dsp) {
-  return from + dsp;
-}
-core::Vector3f boxminusVector(const core::Vector3f& from, const core::Vector3f& to) {
-  return from - to;
-}
-
 int main() {
-  // to unscented and back
+  using UKFType = UKF_<ManifoldSO3>;
 
-  /*   UKFType ukf(boxplusSO3, boxminusSO3);
+  UKFType ukf;
 
-    UKFType::StateType mean = Ry(0.3f);
+  UKFType::StateType mean = UKFType::StateType(Ry(0.2f));
 
-    UKFType::CovType cov = UKFType::CovType::Identity();
-    ukf.toUnscented(mean, cov);
+  UKFType::CovType cov = UKFType::CovType::Identity();
 
-    UKFType::StateType mean_rec;
-    UKFType::CovType cov_rec;
-    ukf.toMeanCov(mean_rec, cov_rec);
+  ukf.toUnscented(mean, cov);
 
-    std::cout << "original: \n" << mean << "\n---\n" << cov << "\n" << std::endl;
-    std::cout << "reconstructed: \n" << mean_rec << "\n---\n" << cov_rec << std::endl; */
+  UKFType::StateType mean_rec;
+  UKFType::CovType cov_rec;
+
+  ukf.toMeanCov(mean_rec, cov_rec);
+
+  std::cout << "mean: \n" << mean.data() << "\ncov: \n" << cov << "\n";
+  std::cout << "mean rec: \n" << mean_rec.data() << "\ncov rec: \n" << cov_rec << "\n";
 }

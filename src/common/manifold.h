@@ -6,12 +6,15 @@ namespace test_imu {
   using TangentType_ = core::Vector_<float, dim>;
 
   template <typename DataType_, int dim_>
-  class ManifoldBase {
+  class ManifoldBase_ {
   public:
     static constexpr int dim = dim_;
-    using ThisType           = ManifoldBase<DataType_, dim_>;
+    using ThisType           = ManifoldBase_<DataType_, dim_>;
     using DataType           = DataType_;
     using TangentType        = TangentType_<dim>;
+    ManifoldBase_()          = default;
+    ManifoldBase_(const DataType& data) : data_(data) {
+    }
 
     inline void setData(const DataType& data) {
       data_ = data;
@@ -21,10 +24,10 @@ namespace test_imu {
     }
 
     // redefine these two methods
-    DataType boxplus(const TangentType&) {
+    ThisType boxplus(const TangentType&) const {
       throw std::runtime_error("boxplus not defined");
     }
-    TangentType boxminus(const ThisType&) {
+    TangentType boxminus(const ThisType&) const {
       throw std::runtime_error("boxminus not defined");
     }
 
@@ -32,24 +35,30 @@ namespace test_imu {
     DataType data_;
   };
 
-  class ManifoldSO3 : public ManifoldBase<core::Matrix3f, 3> {
+  class ManifoldSO3 : public ManifoldBase_<core::Matrix3f, 3> {
   public:
-    DataType boxplusSO3(const TangentType& dsp) {
+    using BaseType = ManifoldBase_<core::Matrix3f, 3>;
+    ManifoldSO3() : BaseType(core::Matrix3f::Identity()) {
+    }
+    ManifoldSO3(const DataType& data) : BaseType(data) {
+    }
+
+    ManifoldSO3 boxplus(const TangentType& dsp) const {
       DataType R = data() * core::geometry3d::expMapSO3(dsp);
       core::fixRotation(R);
-      return R;
+      return ManifoldSO3(R);
     }
-    TangentType boxminusSO3(const ThisType& to) {
+    TangentType boxminus(const ManifoldSO3& to) const {
       DataType R = data_.transpose() * to.data();
       return core::geometry3d::logMapSO3(R.eval());
     }
   };
 
   template <typename... Manifolds>
-  class ManifoldComp;
+  class ManifoldComp_;
 
   template <typename Manifold>
-  class ManifoldComp<Manifold> {
+  class ManifoldComp_<Manifold> {
   public:
     static constexpr int dim = Manifold::dim;
 
@@ -64,9 +73,9 @@ namespace test_imu {
   };
 
   template <typename Manifold, typename... Rest>
-  class ManifoldComp<Manifold, Rest...> {
+  class ManifoldComp_<Manifold, Rest...> {
   public:
-    static constexpr int dim = Manifold::dim + ManifoldComp<Rest...>::dim;
+    static constexpr int dim = Manifold::dim + ManifoldComp_<Rest...>::dim;
     template <size_t N>
     auto& get() {
       if constexpr (N == 0)
@@ -77,7 +86,7 @@ namespace test_imu {
 
   protected:
     Manifold manifold_;
-    ManifoldComp<Rest...> rest_;
+    ManifoldComp_<Rest...> rest_;
   };
 
 } // namespace test_imu

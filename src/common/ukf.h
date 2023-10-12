@@ -1,46 +1,45 @@
 #include "common.h"
-#include "manifold.h"
+
 #include <Eigen/Dense>
 
 namespace test_imu {
 
   // Only what is needed for prediction. srrg2_solver does the update.
-
-  template <typename StateType_, int state_dim_>
-  class UKF {
+  template <typename ManifoldType_>
+  class UKF_ {
   public:
-    static constexpr int state_dim = state_dim_;
+    static constexpr int state_dim = ManifoldType_::dim;
     static constexpr int N         = 2 * state_dim + 1;
 
-    using StateType   = StateType_;
-    using TangentType = core::Vector_<float, state_dim>;
+    using StateType   = ManifoldType_;
+    using TangentType = typename ManifoldType_::TangentType;
     using CovType     = core::MatrixN_<float, state_dim>;
 
-    void toMeanCov(StateType_& mean, CovType& cov) const {
+    void toMeanCov(StateType& mean, CovType& cov) const {
       // compute chart point
-      const StateType_& sigma_0 = points_[0];
+      const StateType& sigma_0 = points_[0];
 
       // compute tangent mean displacement
       TangentType displacement = TangentType::Zero();
       for (size_t i = 1; i < points_.size(); ++i) {
-        const StateType_& Xi = points_.at(i);
-        displacement -= wi_ * boxminus(sigma_0, Xi);
+        const StateType& Xi = points_.at(i);
+        displacement -= wi_ * sigma_0.boxminus(Xi);
       }
 
       // add it to the mean
-      mean = boxplus(sigma_0, displacement);
+      mean = sigma_0.boxplus(displacement);
 
       // covariance lives in tangent space
       cov.setZero();
-      TangentType err = boxminus(mean, points_.at(0));
+      TangentType err = mean.boxminus(points_.at(0));
       cov += wc0_ * err * err.transpose();
 
       for (size_t i = 1; i < points_.size(); ++i) {
-        TangentType err = boxminus(mean, points_.at(i));
+        TangentType err = mean.boxminus(points_.at(i));
         cov += wi_ * err * err.transpose();
       }
     }
-    void toUnscented(const StateType_& mean, const CovType& cov) {
+    void toUnscented(const StateType& mean, const CovType& cov) {
       points_[0] = mean;
 
       // mean weight
@@ -59,13 +58,13 @@ namespace test_imu {
       CovType L = llt.matrixL(); // should be symmetric
       for (size_t i = 0; i < state_dim; ++i) {
         const TangentType Li = L.col(i);
-        points_[2 * i + 1]   = boxplus(mean, Li);
-        points_[2 * i + 2]   = boxplus(mean, -Li);
+        points_[2 * i + 1]   = mean.boxplus(Li);
+        points_[2 * i + 2]   = mean.boxplus(-Li);
       }
     }
 
     // protected:
-    std::vector<StateType_> points_ = std::vector<StateType_>(N);
+    std::vector<StateType> points_ = std::vector<StateType>(N);
     float wm0_, wc0_, wi_;
 
     // mysterious parameters
