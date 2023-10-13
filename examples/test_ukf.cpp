@@ -5,34 +5,29 @@
 using namespace test_imu;
 
 int main() {
-  using UKFType = UKF_<ManifoldComp_<ManifoldSO3, Euclidean_<3>>>;
+  using StateType = ManifoldSO3;
+  using CovType   = UnscentedTransform::CovType<StateType>;
 
-  UKFType ukf;
+  StateType mean = StateType();
+  CovType cov    = CovType::Identity();
 
-  UKFType::StateType mean = UKFType::StateType();
-
-  mean.get<0>().setData(Ry(0.2f));
-  mean.get<1>().setData(core::Vector3f(1.0f, 2.0f, 3.0f));
-
-  UKFType::CovType cov = UKFType::CovType::Identity();
-
+  mean.setData(Ry(0.2f));
   cov(4, 4) = 0.5;
 
-  ukf.toUnscented(mean, cov);
+  SigmaPoints<StateType> spoints;
+  UnscentedTransform::toUnscented(mean, cov, spoints);
 
-  UKFType::StateType mean_rec;
-  UKFType::CovType cov_rec;
+  StateType mean_rec;
+  CovType cov_rec;
 
-  ukf.toMeanCov(mean_rec, cov_rec);
+  UnscentedTransform::toMeanCov(spoints, mean_rec, cov_rec);
 
   std::cout << "mean: \n"
-            << mean.get<0>().data() << "\n"
-            << mean.get<1>().data() << "\n---\n"
+            << mean.data() << "\n"
             << "cov: \n"
             << cov << "\n";
   std::cout << "mean rec: \n"
-            << mean_rec.get<0>().data() << "\n"
-            << mean_rec.get<1>().data() << "\n---\n"
+            << mean_rec.data() << "\n"
             << "cov rec: \n"
             << cov_rec << "\n";
 }
