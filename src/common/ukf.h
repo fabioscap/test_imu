@@ -23,7 +23,7 @@ namespace test_imu {
       TangentType displacement = TangentType::Zero();
       for (size_t i = 1; i < points_.size(); ++i) {
         const StateType& Xi = points_.at(i);
-        displacement -= wi_ * sigma_0.boxminus(Xi);
+        displacement += wi_ * sigma_0.boxminus(Xi);
       }
 
       // add it to the mean

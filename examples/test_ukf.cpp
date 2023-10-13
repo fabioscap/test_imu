@@ -5,13 +5,18 @@
 using namespace test_imu;
 
 int main() {
-  using UKFType = UKF_<ManifoldSO3>;
+  using UKFType = UKF_<ManifoldComp_<ManifoldSO3, Euclidean_<3>>>;
 
   UKFType ukf;
 
-  UKFType::StateType mean = UKFType::StateType(Ry(0.2f));
+  UKFType::StateType mean = UKFType::StateType();
+
+  mean.get<0>().setData(Ry(0.2f));
+  mean.get<1>().setData(core::Vector3f(1.0f, 2.0f, 3.0f));
 
   UKFType::CovType cov = UKFType::CovType::Identity();
+
+  cov(4, 4) = 0.5;
 
   ukf.toUnscented(mean, cov);
 
@@ -20,6 +25,14 @@ int main() {
 
   ukf.toMeanCov(mean_rec, cov_rec);
 
-  std::cout << "mean: \n" << mean.data() << "\ncov: \n" << cov << "\n";
-  std::cout << "mean rec: \n" << mean_rec.data() << "\ncov rec: \n" << cov_rec << "\n";
+  std::cout << "mean: \n"
+            << mean.get<0>().data() << "\n"
+            << mean.get<1>().data() << "\n---\n"
+            << "cov: \n"
+            << cov << "\n";
+  std::cout << "mean rec: \n"
+            << mean_rec.get<0>().data() << "\n"
+            << mean_rec.get<1>().data() << "\n---\n"
+            << "cov rec: \n"
+            << cov_rec << "\n";
 }
