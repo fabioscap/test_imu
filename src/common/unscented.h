@@ -73,13 +73,15 @@ namespace test_imu {
       // weight i
       wi = 0.5 / (state_dim + lambda);
 
-      // Perform Cholesky decomposition
-      Eigen::LLT<Eigen::MatrixXf> llt((state_dim + lambda) * cov);
+      Eigen::JacobiSVD<Eigen::MatrixXf> svd(cov, Eigen::ComputeFullU | Eigen::ComputeFullV);
+      double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
+      std::cout << "det:  " << cov.determinant() << "\n";
+      std::cout << "cond: " << cond << "\n";
 
-      if (!llt.info() == Eigen::Success)
-        throw std::runtime_error("UnscentedTransform::toUnscented| Cholesky decomposition failed");
+      Eigen::MatrixXf U    = svd.matrixU();
+      Eigen::MatrixXf S    = svd.singularValues();
+      CovType<StateType> L = U * S.cwiseSqrt().asDiagonal();
 
-      CovType<StateType> L = llt.matrixL(); // should be symmetric
       for (size_t i = 0; i < state_dim; ++i) {
         const TangentType Li = L.col(i);
         points[2 * i + 1]    = mean.boxplus(Li);

@@ -137,8 +137,13 @@ int main() {
       break;
     integrator.preintegrate(meas, dt);
   }
+
+  std::cout << "SIMGNA: \n";
+  std::cout << integrator.sigma() << "\n";
+
   std::cout << "dT: " << integrator.dT() << "\n";
   imu_factor->setMeasurement(integrator);
+  std::cout << "measurement set.\n";
   imu_factor->grav(Vector3f(0, 0, 0));
   std::cout << "before compute\n";
 
@@ -156,6 +161,10 @@ int main() {
               << integrator.sigma().block<9, 9>(0, 0).determinant() << "\n";
   }
   std::cout << "gt:\n" << std::get<2>(data.at(i)).matrix() << "\n";
+
+  std::cout << "preintegrated measurements:\n " << integrator.delta_R() << "\n"
+            << integrator.delta_p() << "\n";
+
   std::cout << "estimate:\n" << pose_end->estimate().matrix() << "\n";
 
   std::cout << "rel pose t2v:\n"

@@ -78,12 +78,11 @@ int main(int argc, char* argv[]) {
   solver.param_algorithm.setValue(alg);
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType    = VariableSE3QuaternionRightAD;
-  using VarVelImuType     = VariableVector3AD;
-  using ImuBiasVar        = VariableVector3AD;
-  using FactorImuType     = ImuPreintegrationFactorUKFAD;
-  using FactorGpsType     = GpsErrorFactorAD;
-  using PreintegratorType = test_imu::ImuPreintegratorUKF;
+  using VarPoseImuType = VariableSE3QuaternionRightAD;
+  using VarVelImuType  = VariableVector3AD;
+  using ImuBiasVar     = VariableVector3AD;
+  using FactorImuType  = ImuPreintegrationFactorAD;
+  using FactorGpsType  = GpsErrorFactorAD;
 
   // initialization
 
@@ -117,7 +116,7 @@ int main(int argc, char* argv[]) {
 
   size_t graph_id = 4;
 
-  PreintegratorType imu_preintegrator;
+  test_imu::ImuPreintegrator imu_preintegrator;
   imu_preintegrator.setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
   imu_preintegrator.setNoiseAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_sigma));
@@ -186,7 +185,8 @@ int main(int argc, char* argv[]) {
     imu_factor->setVariableId(6, prev_bias_gyro->graphId());
     imu_factor->setVariableId(7, curr_bias_gyro->graphId());
 
-    imu_factor->setMeasurement(imu_preintegrator);
+    // im lazy uncomment this
+    // imu_factor->setMeasurement(imu_preintegrator);
 
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());

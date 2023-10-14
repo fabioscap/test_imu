@@ -3,17 +3,21 @@
 #include "synthetic/synthetic.h"
 
 #include "imu_preintegrator/imu_preintegrator.h"
+#include "imu_preintegrator/imu_preintegrator_slim.h"
+#include "imu_preintegrator/imu_preintegrator_ukf.h"
 
 #include <fstream>
 
 int main() {
   using namespace test_imu;
-  using TrajectoryType = SE3EightTrajectory;
+
+  using PreintegratorType = ImuPreintegratorUKF;
+  using TrajectoryType    = SE3EightTrajectory;
 
   std::ofstream out_pred("/workspace/src/test_imu/examples/output_pred.txt");
   std::ofstream out_gt("/workspace/src/test_imu/examples/output_gt.txt");
   float T    = 10;
-  float freq = 300;
+  float freq = 50;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
@@ -66,7 +70,7 @@ int main() {
   }*/
 
   // imu preintegration
-  ImuPreintegrator integrator;
+  PreintegratorType integrator;
   integrator.reset();
   float dt = 1 / imu.freq();
   std::cout << "dt: " << dt << std::endl;
