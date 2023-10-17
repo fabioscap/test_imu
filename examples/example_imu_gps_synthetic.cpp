@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
   using VarPoseImuType = VariableSE3QuaternionRightAD;
   using VarVelImuType  = VariableVector3AD;
   using ImuBiasVar     = VariableVector3AD;
-  using FactorImuType  = ImuPreintegrationFactorAD;
+  using FactorImuType  = ImuPreintegrationFactorUKFAD;
   using FactorGpsType  = GpsErrorFactorAD;
 
   // initialization
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
 
   size_t graph_id = 4;
 
-  test_imu::ImuPreintegrator imu_preintegrator;
+  test_imu::ImuPreintegratorUKF imu_preintegrator;
   imu_preintegrator.setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
   imu_preintegrator.setNoiseAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_sigma));

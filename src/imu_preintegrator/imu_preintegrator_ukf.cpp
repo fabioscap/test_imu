@@ -33,10 +33,6 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, float dt) {
   core::Vector3f acc_c     = m.acceleration - bias_acc_;
   core::Vector3f ang_vel_c = m.angular_vel - bias_gyro_;
 
-  // UKF: set input mean
-  delta_incr_.get<5>().setData(acc_c);
-  delta_incr_.get<6>().setData(ang_vel_c);
-
   // auxiliary variables
   core::Vector3f dtheta = ang_vel_c * dt;
   auto acc_skew         = core::geometry3d::skew(acc_c);
@@ -67,7 +63,13 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, float dt) {
   scaling_.block<3, 3>(NBAidx, NBAidx) = Eigen::Matrix3f::Identity() * dt;
 
   /* estimate updates */
+  sigma_joint_.setZero();
+  sigma_joint_.block<state_dim, state_dim>(0, 0)                 = sigma_;
   sigma_joint_.block<noise_dim, noise_dim>(state_dim, state_dim) = scaling_ * sigma_noise_;
+
+  // UKF: set input mean
+  delta_incr_.get<5>().setData(m.acceleration);
+  delta_incr_.get<6>().setData(m.angular_vel);
 
   UnscentedTransform::toUnscented(delta_incr_, sigma_joint_, spoints);
 
@@ -109,42 +111,15 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, float dt) {
   // go back to normal parametrization
   UnscentedTransform::toMeanCov(spoints, delta_incr_, sigma_joint_);
 
+  sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
+
   dT_ += dt;
 }
 
 void ImuPreintegratorUKF::reset() {
-  measurements_.clear();
-
-  dT_ = 0;
+  ImuPreintegratorBase::reset();
 
   delta_incr_ = DeltaManifold();
-
-  // small non-singular covariance otherwise we can't do the choleskying
-  sigma_joint_.block<state_dim, state_dim>(0, 0) = 1e-6 * CovType::Identity(state_dim, state_dim);
-
-  // nominal values for the bias
-  bias_acc_  = core::Vector3f::Zero();
-  bias_gyro_ = core::Vector3f::Zero();
-
-  // bias correction
-  dR_db_gyro_ = core::Matrix3f::Zero();
-  dv_db_acc_  = core::Matrix3f::Zero();
-  dv_db_gyro_ = core::Matrix3f::Zero();
-  dp_db_acc_  = core::Matrix3f::Zero();
-  dp_db_gyro_ = core::Matrix3f::Zero();
-}
-
-const void ImuPreintegratorUKF::setNoiseGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NGidx, NGidx) = v.asDiagonal();
-}
-const void ImuPreintegratorUKF::setNoiseAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NAidx, NAidx) = v.asDiagonal();
-}
-const void ImuPreintegratorUKF::setNoiseBiasGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.asDiagonal();
-}
-const void ImuPreintegratorUKF::setNoiseBiasAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.asDiagonal();
 }
 
 void ImuPreintegratorUKF::getPrediction(const core::Isometry3f& Ti,

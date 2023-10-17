@@ -27,7 +27,7 @@ int main() {
   using TrajectoryType = SE3EightTrajectory;
 
   constexpr bool slim     = false;
-  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegrator>::type;
+  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegratorUKF>::type;
   using FactorType =
     std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
 

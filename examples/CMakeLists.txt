@@ -40,6 +40,22 @@ target_link_libraries(example_kitti_imu_gps
                       pthread
 )
 
+add_executable(view_graph view_graph.cpp)
+target_link_libraries(view_graph
+                      common
+                      imu_preintegrator
+                      preintegration_factor
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+                      ${QGLViewer_LIBRARIES}
+                      ${SRRG_QT_LIBRARIES}
+                      ${GLUT_LIBRARIES}
+                      ${catkin_LIBRARIES}
+                      GL
+                      pthread
+)
+
+
 add_executable(test_ukf test_ukf.cpp)
 target_link_libraries(test_ukf
                       common

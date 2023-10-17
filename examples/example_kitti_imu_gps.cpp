@@ -21,6 +21,8 @@
 #include <thread>
 #include <unistd.h>
 
+#include <string.h>
+
 using namespace std;
 using namespace srrg2_core;
 using namespace srrg2_solver;
@@ -63,6 +65,11 @@ void loadKittiData(KittiCalibration& kitti_calibration,
 void viewGraph(ViewerCanvasPtr canvas_);
 
 int main(int argc, char* argv[]) {
+  bool use_ukf = false;
+  if (argc > 1)
+    if (!std::strcmp(argv[1], "ukf"))
+      use_ukf = true;
+
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
 
@@ -78,12 +85,11 @@ int main(int argc, char* argv[]) {
   solver.param_algorithm.setValue(alg);
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType    = VariableSE3QuaternionRightAD;
-  using VarVelImuType     = VariableVector3AD;
-  using ImuBiasVar        = VariableVector3AD;
-  using FactorImuType     = ImuPreintegrationFactorUKFAD;
-  using FactorGpsType     = GpsErrorFactorAD;
-  using PreintegratorType = test_imu::ImuPreintegratorUKF;
+  using VarPoseImuType = VariableSE3QuaternionRightAD;
+  using VarVelImuType  = VariableVector3AD;
+  using ImuBiasVar     = VariableVector3AD;
+  using FactorImuType  = ImuPreintegrationFactorAD;
+  using FactorGpsType  = GpsErrorFactorAD;
 
   // initialization
 
@@ -117,26 +123,35 @@ int main(int argc, char* argv[]) {
 
   size_t graph_id = 4;
 
-  PreintegratorType imu_preintegrator;
-  imu_preintegrator.setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
-  imu_preintegrator.setNoiseAccelerometer(
+  test_imu::ImuPreintegratorBase* imu_preintegrator;
+  if (use_ukf)
+    imu_preintegrator = new test_imu::ImuPreintegratorUKF();
+  else
+    imu_preintegrator = new test_imu::ImuPreintegrator();
+
+  imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
+  imu_preintegrator->setNoiseAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_sigma));
-  imu_preintegrator.setNoiseBiasGyroscope(
+  imu_preintegrator->setNoiseBiasGyroscope(
     Vector3f::Constant(kitti_calibration.gyroscope_bias_sigma));
-  imu_preintegrator.setNoiseBiasAccelerometer(
+  imu_preintegrator->setNoiseBiasAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_bias_sigma));
 
   size_t j = 0;
   for (size_t i = 1; i < gps_measurements.size(); ++i) {
     const double t_previous = gps_measurements.at(i - 1).time;
     const double gps_time   = gps_measurements.at(i).time;
+
+    imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
+    imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
+
     while (j < imu_measurements.size() && imu_measurements.at(j).time <= gps_time) {
       if (imu_measurements.at(j).time >= t_previous) {
         test_imu::ImuMeasurement meas;
         meas.acceleration = imu_measurements.at(j).accelerometer;
         meas.angular_vel  = imu_measurements.at(j).gyroscope;
         meas.timestamp    = imu_measurements.at(j).time;
-        imu_preintegrator.preintegrate(meas, imu_measurements.at(j).dt);
+        imu_preintegrator->preintegrate(meas, imu_measurements.at(j).dt);
       }
 
       j++;
@@ -181,12 +196,12 @@ int main(int argc, char* argv[]) {
     imu_factor->setVariableId(3, curr_vel_var->graphId());
 
     imu_factor->setVariableId(4, prev_bias_acc->graphId());
-    imu_factor->setVariableId(5, curr_bias_acc->graphId());
+    imu_factor->setVariableId(5, prev_bias_gyro->graphId());
 
-    imu_factor->setVariableId(6, prev_bias_gyro->graphId());
+    imu_factor->setVariableId(6, curr_bias_acc->graphId());
     imu_factor->setVariableId(7, curr_bias_gyro->graphId());
 
-    imu_factor->setMeasurement(imu_preintegrator);
+    imu_factor->setMeasurement(*imu_preintegrator);
 
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());
@@ -197,18 +212,12 @@ int main(int argc, char* argv[]) {
 
     graph->addFactor(FactorBasePtr(imu_factor));
     graph->addFactor(FactorBasePtr(gps_factor));
-    imu_preintegrator.reset();
+    imu_preintegrator->reset();
 
     solver.setGraph(graph);
 
     solver.compute();
-    /*     Eigen::SparseMatrix<double> H;
-        solver.H().fillEigenSparse(H);
-        std::cout << "det: " << Eigen::MatrixXd(H).determinant() << std::endl;
-        std::cout << Eigen::MatrixXd(H) << std::endl;
-
-        std::cerr << solver.iterationStats() << std::endl;
-        throw std::runtime_error("ciaoo\n"); */
+    std::cerr << solver.iterationStats() << std::endl;
 
     prev_pose_var  = curr_pose_var;
     prev_vel_var   = curr_vel_var;
@@ -245,15 +254,13 @@ int main(int argc, char* argv[]) {
   }
   dumper.close();
 
-  /*
-  QApplication qapp(argc, argv);
-  ViewerCoreSharedQGL viewer_core(argc, argv, &qapp);
+  /*   QApplication qapp(argc, argv);
+    ViewerCoreSharedQGL viewer_core(argc, argv, &qapp);
 
-  std::thread graph_t(viewGraph, viewer_core.getCanvas("viewer_core_shared_canvas"));
-  viewer_core.startViewerServer();
+    std::thread graph_t(viewGraph, viewer_core.getCanvas("viewer_core_shared_canvas"));
+    viewer_core.startViewerServer();
 
-  graph_t.join();
-  */
+    graph_t.join(); */
 }
 
 void loadKittiData(KittiCalibration& kitti_calibration,
