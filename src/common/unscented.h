@@ -55,7 +55,7 @@ namespace test_imu {
       using TangentType = typename StateType::TangentType;
 
       const int state_dim = StateType::dim;
-      const float lambda  = alpha_ * alpha_ * (state_dim + k_);
+      const float lambda  = alpha_ * alpha_ * (state_dim + k_) - state_dim;
 
       auto& points = spoints.points;
       float& wm0   = spoints.wm0;
@@ -73,25 +73,23 @@ namespace test_imu {
       // weight i
       wi = 0.5 / (state_dim + lambda);
 
-      Eigen::JacobiSVD<Eigen::MatrixXf> svd(cov, Eigen::ComputeFullU | Eigen::ComputeFullV);
-      double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
-      std::cout << "det:  " << cov.determinant() << "\n";
-      std::cout << "cond: " << cond << "\n";
+      /*       Eigen::JacobiSVD<Eigen::MatrixXf> svd(cov, Eigen::ComputeFullU |
+         Eigen::ComputeFullV); Eigen::MatrixXf U = svd.matrixU(); Eigen::MatrixXf S =
+         svd.singularValues(); CovType<StateType> L = U * std::sqrt((state_dim + lambda)) *
+         S.cwiseSqrt().asDiagonal() * U.transpose(); */
 
-      Eigen::MatrixXf U    = svd.matrixU();
-      Eigen::MatrixXf S    = svd.singularValues();
-      CovType<StateType> L = U * S.cwiseSqrt().asDiagonal();
+      CovType<StateType> L = cov.llt().matrixL();
 
       for (size_t i = 0; i < state_dim; ++i) {
         const TangentType Li = L.col(i);
-        points[2 * i + 1]    = mean.boxplus(Li);
-        points[2 * i + 2]    = mean.boxplus(-Li);
+        points[2 * i + 1]    = mean.boxplus(std::sqrt(state_dim + lambda) * Li);
+        points[2 * i + 2]    = mean.boxplus(-std::sqrt(state_dim + lambda) * Li);
       }
     }
 
     // mysterious parameters
     static constexpr float beta_  = 2.0f;
-    static constexpr float alpha_ = 1e-3;
+    static constexpr float alpha_ = 2e-2;
     static constexpr float k_     = 0;
 
   private:
