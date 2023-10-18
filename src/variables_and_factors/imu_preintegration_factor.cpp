@@ -71,7 +71,7 @@ namespace srrg2_solver {
     convertMatrix(dp_db_gyro_, preintegrator.dp_db_gyro());
 
     dT_ = DualValuef(preintegrator.dT());
-    setInformationMatrix(preintegrator.sigma().inverse());
+    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
     // setInformationMatrix(Eigen::MatrixXf::Identity(15, 15));
   }
 
@@ -108,7 +108,7 @@ namespace srrg2_solver {
     convertMatrix(delta_p_, preintegrator.delta_p());
 
     dT_ = DualValuef(preintegrator.dT());
-    setInformationMatrix(preintegrator.sigma().inverse());
+    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
     // setInformationMatrix(Eigen::MatrixXf::Identity(9, 9));
   }
 

@@ -1,5 +1,7 @@
 #include "common/manifold.h"
+#include "common/manifold_impl.cpp"
 #include "common/unscented.h"
+#include "common/unscented_impl.cpp"
 #include <srrg_geometry/geometry3d.h>
 
 using namespace test_imu;
@@ -14,8 +16,8 @@ int main() {
   JointType s0;
   CovType cov = CovType::Identity();
 
-  s0.get<0>().setData(Ry(0.3f));
-  s0.get<1>().setData(core::Vector3f(0.1, 0.2, 0.3));
+  s0.get<0>().setData(Ry<Scalar>(0.3));
+  s0.get<1>().setData(core::Vector3_<Scalar>(0.1, 0.2, 0.3));
 
   SigmaPoints<JointType> spoints;
 

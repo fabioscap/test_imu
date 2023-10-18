@@ -19,17 +19,17 @@
 
 using namespace test_imu;
 
-void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
+void ImuPreintegrator::preintegrate(const ImuMeasurement& m, Scalar dt) {
   measurements_.push_back(m);
 
   // correct the measurements
-  core::Vector3f acc_c     = m.acceleration - bias_acc_;
-  core::Vector3f ang_vel_c = m.angular_vel - bias_gyro_;
+  Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+  Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
 
   // auxiliary variables
-  core::Vector3f dtheta = ang_vel_c * dt;
-  auto acc_skew         = core::geometry3d::skew(acc_c);
-  auto dR               = core::geometry3d::expMapSO3(dtheta);
+  Vector3 dtheta = ang_vel_c * dt;
+  auto acc_skew  = core::geometry3d::skew(acc_c);
+  auto dR        = core::geometry3d::expMapSO3(dtheta);
   core::fixRotation(dR);
   auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
 
@@ -58,7 +58,7 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   // dp_dphi
   A_.block<3, 3>(Pidx, PHIidx) = -0.5 * delta_R_ * acc_skew * dt * dt;
   // dp_dv
-  A_.block<3, 3>(Pidx, Vidx) = core::Matrix3f::Identity() * dt;
+  A_.block<3, 3>(Pidx, Vidx) = Matrix3::Identity() * dt;
   // dp_dp: I , dp_dbgyro: 0
   // dp_dbacc
   A_.block<3, 3>(Pidx, BAidx) = 0.5 * delta_R_ * dt * dt;
@@ -86,23 +86,23 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
   // B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
   // dbgyro_dgyro_noise: 0, dbgyro_dacc_noise: 0
   // dbgyro_dbgyro_noise:
-  B_.block<3, 3>(BGidx, NBGidx) = core::Matrix3f::Identity();
+  B_.block<3, 3>(BGidx, NBGidx) = Matrix3::Identity();
   // dbgyro_dbacc_noise: 0, dbgyro_dbgyro_noise_init: 0, dbgyro_dbacc_noise_init: 0,
   // dbacc_dgyro_noise: 0, dbacc_dacc_noise: 0, dbacc_dbgyro_noise: 0
   // dbacc_dbacc_noise
-  B_.block<3, 3>(BAidx, NBAidx) = core::Matrix3f::Identity();
+  B_.block<3, 3>(BAidx, NBAidx) = Matrix3::Identity();
   // dbacc_dbgyro_noise_init: 0, dbacc_dbacc_noise_init: 0
 
   // TODO B is sparse and sigma_noise_ is block diagonal
   // it is possible to do this much quicker
   scaling_.setIdentity(); // necessary?
   // it can also be precomputed if dt is constant
-  scaling_.block<3, 3>(NGidx, NGidx) = Eigen::Matrix3f::Identity() / dt;
-  scaling_.block<3, 3>(NAidx, NAidx) = Eigen::Matrix3f::Identity() / dt;
-  // scaling_.block<3, 3>(NBGIidx, NBGIidx) = Eigen::Matrix3f::Identity() / dt;
-  // scaling_.block<3, 3>(NBAIidx, NBAIidx) = Eigen::Matrix3f::Identity() / dt;
-  scaling_.block<3, 3>(NBGidx, NBGidx) = Eigen::Matrix3f::Identity() * dt;
-  scaling_.block<3, 3>(NBAidx, NBAidx) = Eigen::Matrix3f::Identity() * dt;
+  scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
+  scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
+  // scaling_.block<3, 3>(NBGIidx, NBGIidx) = Matrix3::Identity() / dt;
+  // scaling_.block<3, 3>(NBAIidx, NBAIidx) = Matrix3::Identity() / dt;
+  scaling_.block<3, 3>(NBGidx, NBGidx) = Matrix3::Identity() * dt;
+  scaling_.block<3, 3>(NBAidx, NBAidx) = Matrix3::Identity() * dt;
 
   /*   std::cout << "B:\n" << B_ << std::endl;
     std::cout << "scaling_* sigma_noise_\n" << scaling_ * sigma_noise_ << "\n";
@@ -143,11 +143,9 @@ void ImuPreintegrator::preintegrate(const ImuMeasurement& m, float dt) {
 void ImuPreintegrator::reset() {
   ImuPreintegratorBase::reset();
 
-  delta_p_ = core::Vector3f::Zero();
-  delta_R_ = core::Matrix3f::Identity();
-  delta_v_ = core::Vector3f::Zero();
-
-  sigma_ = CovType::Zero(state_dim, state_dim);
+  delta_p_ = Vector3::Zero();
+  delta_R_ = Matrix3::Identity();
+  delta_v_ = Vector3::Zero();
 
   // allocate matrices for noise propagation
   A_.setIdentity();
@@ -161,15 +159,15 @@ void ImuPreintegratorBase::reset() {
   sigma_ = CovType::Zero(state_dim, state_dim);
 
   // nominal values for the bias
-  bias_acc_  = core::Vector3f::Zero();
-  bias_gyro_ = core::Vector3f::Zero();
+  bias_acc_  = Vector3::Zero();
+  bias_gyro_ = Vector3::Zero();
 
   // bias correction
-  dR_db_gyro_ = core::Matrix3f::Zero();
-  dv_db_acc_  = core::Matrix3f::Zero();
-  dv_db_gyro_ = core::Matrix3f::Zero();
-  dp_db_acc_  = core::Matrix3f::Zero();
-  dp_db_gyro_ = core::Matrix3f::Zero();
+  dR_db_gyro_ = Matrix3::Zero();
+  dv_db_acc_  = Matrix3::Zero();
+  dv_db_gyro_ = Matrix3::Zero();
+  dp_db_acc_  = Matrix3::Zero();
+  dp_db_gyro_ = Matrix3::Zero();
 }
 
 void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
@@ -180,21 +178,21 @@ void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
 
   float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
 
-  vf = Ti.linear() * delta_v_ + vi;
+  vf = Ti.linear() * delta_v() + vi;
 
-  Tf.linear()      = Ti.linear() * delta_R_;
-  Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
+  Tf.linear()      = Ti.linear() * delta_R();
+  Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
 }
 
 const void ImuPreintegratorBase::setNoiseGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NGidx, NGidx) = v.asDiagonal();
+  sigma_noise_.block<3, 3>(NGidx, NGidx) = v.cast<Scalar>().asDiagonal();
 }
 const void ImuPreintegratorBase::setNoiseAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NAidx, NAidx) = v.asDiagonal();
+  sigma_noise_.block<3, 3>(NAidx, NAidx) = v.cast<Scalar>().asDiagonal();
 }
 const void ImuPreintegratorBase::setNoiseBiasGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.asDiagonal();
+  sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.cast<Scalar>().asDiagonal();
 }
 const void ImuPreintegratorBase::setNoiseBiasAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.asDiagonal();
+  sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.cast<Scalar>().asDiagonal();
 }

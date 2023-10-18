@@ -7,6 +7,9 @@
 
 namespace test_imu {
 
+  // single or double precision for delta increment computation and covariance propagation
+  using Scalar = double;
+
   namespace core = srrg2_core;
 
   struct ImuMeasurement {

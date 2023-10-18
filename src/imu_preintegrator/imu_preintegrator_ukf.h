@@ -1,3 +1,5 @@
+#pragma once
+
 #include "common/common.h"
 #include "common/manifold.h"
 #include "common/unscented.h"
@@ -8,21 +10,24 @@ namespace test_imu {
 
   class ImuPreintegratorUKF : public ImuPreintegratorBase {
   public:
-    using CovType      = Eigen::MatrixXf;
-    using CovNoiseType = Eigen::MatrixXf;
+    using CovType      = ImuPreintegratorBase::CovType;
+    using CovNoiseType = ImuPreintegratorBase::CovNoiseType;
+
+    using Vector3 = ImuPreintegratorBase::Vector3;
+    using Matrix3 = ImuPreintegratorBase::Matrix3;
 
     static constexpr int state_dim = 15;
     static constexpr int noise_dim = 12;
 
-    using CovJType = core::MatrixN_<float, state_dim + noise_dim>;
+    using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + noise_dim>;
 
-    void preintegrate(const ImuMeasurement& m, float dt) override;
+    void preintegrate(const ImuMeasurement& m, Scalar dt) override;
     // allocates a new imu measurement
     void reset() override;
     // clang-format off
-    inline const core::Matrix3f& delta_R() const override {return delta_incr_.get<0>().data();}
-    inline const core::Vector3f& delta_p() const override {return delta_incr_.get<2>().data();}
-    inline const core::Vector3f& delta_v() const override {return delta_incr_.get<1>().data();}
+    const core::Matrix3f delta_R() const override;
+    const core::Vector3f delta_p() const override;
+    const core::Vector3f delta_v() const override;
     inline const CovType& sigma() const override {
       // sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
       return sigma_;}

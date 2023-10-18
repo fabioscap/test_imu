@@ -1,9 +1,11 @@
+#pragma once
+
 #include "common.h"
 #include <srrg_geometry/geometry3d.h>
 namespace test_imu {
 
   template <int dim>
-  using TangentType_ = core::Vector_<float, dim>;
+  using TangentType_ = core::Vector_<Scalar, dim>;
 
   template <typename DataType_, int dim_>
   class ManifoldBase_ {
@@ -37,23 +39,13 @@ namespace test_imu {
     DataType data_;
   };
 
-  class ManifoldSO3 : public ManifoldBase_<core::Matrix3f, 3> {
+  class ManifoldSO3 : public ManifoldBase_<core::Matrix3_<Scalar>, 3> {
   public:
-    using BaseType = ManifoldBase_<core::Matrix3f, 3>;
-    ManifoldSO3() : BaseType(DataType::Identity()) {
-    }
-    ManifoldSO3(const DataType& data) : BaseType(data) {
-    }
-
-    ManifoldSO3 boxplus(const TangentType& dsp) const {
-      DataType R = data() * core::geometry3d::expMapSO3(dsp);
-      core::fixRotation(R);
-      return ManifoldSO3(R);
-    }
-    TangentType boxminus(const ManifoldSO3& to) const {
-      DataType R = data_.transpose() * to.data();
-      return core::geometry3d::logMapSO3(R.eval());
-    }
+    using BaseType = ManifoldBase_<core::Matrix3_<Scalar>, 3>;
+    ManifoldSO3();
+    ManifoldSO3(const DataType& data);
+    ManifoldSO3 boxplus(const TangentType& dsp) const;
+    TangentType boxminus(const ManifoldSO3& to) const;
   };
 
   // specialization for Euclidean domains
@@ -67,12 +59,9 @@ namespace test_imu {
     }
     Euclidean_(const DataType& data) : BaseType(data) {
     }
-    Euclidean_ boxplus(const TangentType& dsp) const {
-      return Euclidean_(this->data_ + dsp);
-    }
-    TangentType boxminus(const Euclidean_& to) const {
-      return to.data() - this->data_;
-    }
+    Euclidean_ boxplus(const TangentType& dsp) const;
+
+    TangentType boxminus(const Euclidean_& to) const;
   };
 
   template <typename... Manifolds>
@@ -85,10 +74,9 @@ namespace test_imu {
     using ThisType           = ManifoldComp_<Manifold>;
     using TangentType        = typename Manifold::TangentType;
 
-    ManifoldComp_<Manifold>() = default;
+    ManifoldComp_() = default;
 
-    ManifoldComp_<Manifold>(const Manifold& m) : manifold_(m) {
-    }
+    ManifoldComp_(const Manifold& m);
 
     ThisType boxplus(const TangentType& dsp) const {
       return ThisType(manifold_.boxplus(dsp));

@@ -15,7 +15,8 @@
 
 #include <fstream>
 
-void dumpCov(const Eigen::MatrixXf& cov);
+template <typename Scalar>
+void dumpCov(const Eigen::Matrix<Scalar, -1, -1>& cov);
 
 // create two variables and a preintegration factor between them
 // then fix the first one and see if the second is optimized
@@ -27,7 +28,7 @@ int main() {
   using TrajectoryType = SE3EightTrajectory;
 
   constexpr bool slim     = false;
-  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegratorUKF>::type;
+  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegrator>::type;
   using FactorType =
     std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
 
@@ -177,7 +178,8 @@ int main() {
   return 0;
 }
 
-void dumpCov(const Eigen::MatrixXf& cov) {
+template <typename Scalar>
+void dumpCov(const Eigen::Matrix<Scalar, -1, -1>& cov) {
   // Save the covariance matrix to a data file
   std::ofstream datafile("/workspace/src/test_imu/examples/covariance_matrix.txt");
   datafile << cov;

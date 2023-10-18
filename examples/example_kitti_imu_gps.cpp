@@ -66,10 +66,13 @@ void viewGraph(ViewerCanvasPtr canvas_);
 
 int main(int argc, char* argv[]) {
   bool use_ukf = false;
-  if (argc > 1)
+  bool use_imu = true;
+  if (argc > 1) {
     if (!std::strcmp(argv[1], "ukf"))
       use_ukf = true;
-
+    else if (!std::strcmp(argv[1], "noimu"))
+      use_imu = false;
+  }
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
 
@@ -210,7 +213,8 @@ int main(int argc, char* argv[]) {
     gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
     gps_factor->setMeasurement(curr_gps_pose);
 
-    graph->addFactor(FactorBasePtr(imu_factor));
+    if (use_imu)
+      graph->addFactor(FactorBasePtr(imu_factor));
     graph->addFactor(FactorBasePtr(gps_factor));
     imu_preintegrator->reset();
 

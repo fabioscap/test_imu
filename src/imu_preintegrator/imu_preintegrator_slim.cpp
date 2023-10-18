@@ -12,17 +12,17 @@
 #define NBAidx 9 // bias random walk noise acc
 
 namespace test_imu {
-  void ImuPreintegratorSlim::preintegrate(const ImuMeasurement& m, float dt) {
+  void ImuPreintegratorSlim::preintegrate(const ImuMeasurement& m, Scalar dt) {
     measurements_.push_back(m);
 
     // correct the measurements
-    core::Vector3f acc_c     = m.acceleration - bias_acc_;
-    core::Vector3f ang_vel_c = m.angular_vel - bias_gyro_;
+    Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+    Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
 
     // auxiliary variables
-    core::Vector3f dtheta = ang_vel_c * dt;
-    auto acc_skew         = core::geometry3d::skew(acc_c);
-    auto dR               = core::geometry3d::expMapSO3(dtheta);
+    Vector3 dtheta = ang_vel_c * dt;
+    auto acc_skew  = core::geometry3d::skew(acc_c);
+    auto dR        = core::geometry3d::expMapSO3(dtheta);
     core::fixRotation(dR);
     auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
 
@@ -42,7 +42,7 @@ namespace test_imu {
     A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
     A_.block<3, 3>(Vidx, PHIidx)   = -delta_R_ * acc_skew * dt;
     A_.block<3, 3>(Pidx, PHIidx)   = -0.5 * delta_R_ * acc_skew * dt * dt;
-    A_.block<3, 3>(Pidx, Vidx)     = core::Matrix3f::Identity() * dt;
+    A_.block<3, 3>(Pidx, Vidx)     = Matrix3::Identity() * dt;
 
     // B_ ...
     B_.setZero(); // necessary?
@@ -53,10 +53,10 @@ namespace test_imu {
     // it is possible to do this much quicker
     scaling_.setIdentity(); // necessary?
     // it can also be precomputed if dt is constant
-    scaling_.block<3, 3>(NGidx, NGidx) = Eigen::Matrix3f::Identity() / dt;
-    scaling_.block<3, 3>(NAidx, NAidx) = Eigen::Matrix3f::Identity() / dt;
-    /*     scaling_.block<3, 3>(NBGidx, NBGidx) = Eigen::Matrix3f::Identity() * dt;
-        scaling_.block<3, 3>(NBAidx, NBAidx) = Eigen::Matrix3f::Identity() * dt;
+    scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
+    scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
+    /*     scaling_.block<3, 3>(NBGidx, NBGidx) = Matrix3::Identity() * dt;
+        scaling_.block<3, 3>(NBAidx, NBAidx) = Matrix3::Identity() * dt;
      */
 
     sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
@@ -76,7 +76,15 @@ namespace test_imu {
     dT_ += dt;
   }
   void ImuPreintegratorSlim::reset() {
-    measurements_.clear();
+    ImuPreintegratorBase::reset();
+
+    delta_p_ = Vector3::Zero();
+    delta_R_ = Matrix3::Identity();
+    delta_v_ = Vector3::Zero();
+
+    // allocate matrices for noise propagation
+    A_.setIdentity();
+    B_.setIdentity();
   }
 
   void ImuPreintegratorSlim::getPrediction(const core::Isometry3f& Ti,
@@ -87,9 +95,9 @@ namespace test_imu {
 
     float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
 
-    vf = Ti.linear() * delta_v_ + vi;
+    vf = Ti.linear() * delta_v() + vi;
 
-    Tf.linear()      = Ti.linear() * delta_R_;
-    Tf.translation() = Ti.linear() * delta_p_ + Ti.translation() + T * vi;
+    Tf.linear()      = Ti.linear() * delta_R();
+    Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
   }
 } // namespace test_imu
