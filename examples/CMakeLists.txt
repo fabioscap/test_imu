@@ -40,6 +40,11 @@ target_link_libraries(example_kitti_imu_gps
                       pthread
 )
 
+add_executable(example_kitti_imu_gps_gtsam example_kitti_imu_gps_gtsam.cpp)
+target_link_libraries(example_kitti_imu_gps_gtsam
+                      gtsam
+)
+
 add_executable(view_graph view_graph.cpp)
 target_link_libraries(view_graph
                       common
@@ -60,3 +65,7 @@ add_executable(test_ukf test_ukf.cpp)
 target_link_libraries(test_ukf
                       common
 )
+
+find_package(GTSAMCMakeTools)
+find_package(GTSAM REQUIRED) # Uses installed package
+include_directories(${GTSAM_INCLUDE_DIR})

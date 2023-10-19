@@ -3,6 +3,9 @@
 // ia system utils
 #include <srrg_system_utils/parse_command_line.h>
 // ia solver stuff
+#include "srrg_solver/solver_core/solver.h"
+#include "srrg_solver/variables_and_factors/types_3d/all_types.h"
+#include "variables_and_factors/imu_preintegration_factor.h"
 #include <srrg_solver/solver_core/instances.h>
 #include <srrg_solver/solver_core/internals/linear_solvers/instances.h>
 #include <srrg_solver/solver_core/internals/linear_solvers/sparse_block_linear_solver_cholesky_csparse.h>
@@ -70,6 +73,111 @@ void viewGraph(ViewerCanvasPtr canvas_) {
   }
 }
 
+// to read gtsam's shittings
+void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
+  std::ifstream file(csv_file);
+
+  std::string line;
+
+  VariableSE3QuaternionRightAD* prev_pose = new VariableSE3QuaternionRightAD();
+
+  prev_pose->setGraphId(0);
+  prev_pose->setStatus(VariableBase::Status::Fixed);
+  graph->addVariable(VariableBasePtr(prev_pose));
+
+  // dummy variables
+  VariableVector3AD* bias_acc_from  = new VariableVector3AD();
+  VariableVector3AD* bias_gyro_from = new VariableVector3AD();
+  VariableVector3AD* bias_acc_to    = new VariableVector3AD();
+  VariableVector3AD* bias_gyro_to   = new VariableVector3AD();
+  VariableVector3AD* vel_from       = new VariableVector3AD();
+  VariableVector3AD* vel_to         = new VariableVector3AD();
+
+  bias_acc_from->setGraphId(1);
+  bias_gyro_from->setGraphId(2);
+  bias_acc_to->setGraphId(3);
+  bias_gyro_to->setGraphId(4);
+  vel_from->setGraphId(5);
+  vel_to->setGraphId(6);
+  graph->addVariable(VariableBasePtr(bias_acc_from));
+  graph->addVariable(VariableBasePtr(bias_gyro_from));
+  graph->addVariable(VariableBasePtr(bias_acc_to));
+  graph->addVariable(VariableBasePtr(bias_gyro_to));
+  graph->addVariable(VariableBasePtr(vel_from));
+  graph->addVariable(VariableBasePtr(vel_to));
+
+  int graph_id = 7;
+  int i        = 0;
+  while (std::getline(file, line)) {
+    std::cout << graph_id << "\n";
+    // Skip lines starting with '#'
+    if (line[0] == '#') {
+      continue;
+    }
+    // Tokenize the line using a stringstream
+    std::istringstream ss(line);
+    std::vector<std::string> tokens;
+    std::string token;
+
+    while (std::getline(ss, token, ',')) {
+      tokens.push_back(token);
+    }
+
+    // Check if there are at least 8 columns
+    if (tokens.size() < 8) {
+      std::cerr << "Error: CSV file does not have enough columns." << std::endl;
+      return;
+    }
+
+    // Extract the relevant columns
+    float x  = std::stod(tokens[1]);
+    float y  = std::stod(tokens[2]);
+    float z  = std::stod(tokens[3]);
+    float qx = std::stod(tokens[4]);
+    float qy = std::stod(tokens[5]);
+    float qz = std::stod(tokens[6]);
+    float qw = std::stod(tokens[7]);
+
+    Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
+
+    pose.translation() = Vector3f(x, y, z);
+    pose.linear()      = Eigen::Quaternionf(qw, qx, qy, qz).normalized().toRotationMatrix();
+    if (i == 0) {
+      prev_pose->setEstimate(pose);
+      ++i;
+      continue;
+    }
+    VariableSE3QuaternionRightAD* new_pose = new VariableSE3QuaternionRightAD();
+    new_pose->setEstimate(pose);
+    new_pose->setGraphId(++graph_id);
+    new_pose->setStatus(VariableBase::Status::Fixed);
+    graph->addVariable(VariableBasePtr(new_pose));
+
+    // put a dummy factor between two variables for better visualization
+    ImuPreintegrationFactorAD* factor = new ImuPreintegrationFactorAD();
+    factor->setVariableId(0, prev_pose->graphId());
+    factor->setVariableId(1, vel_from->graphId());
+    factor->setVariableId(2, new_pose->graphId());
+    factor->setVariableId(3, vel_to->graphId());
+    factor->setVariableId(4, bias_acc_from->graphId());
+    factor->setVariableId(5, bias_acc_to->graphId());
+    factor->setVariableId(6, bias_gyro_from->graphId());
+    factor->setVariableId(7, bias_gyro_to->graphId());
+
+    graph->addFactor(FactorBasePtr(factor));
+
+    prev_pose = new_pose;
+    ++i;
+  }
+  file.close();
+
+  graph->setSerializationLevel(-1);
+  graph->write("/workspace/src/test_imu/prova.boss");
+  std::cerr << "graph written in "
+            << "/workspace/src/test_imu/prova.boss" << std::endl;
+  return;
+}
+
 int main(int argc, char** argv) {
   initTypes();
 
@@ -82,12 +190,29 @@ int main(int argc, char** argv) {
 
   for (const auto& input_file : cmd_line.lastParsedArgs()) {
     LOG << "loading graph from file [" << FG_YELLOW(input_file) << "]" << std::endl;
-    FactorGraphPtr graph = FactorGraph::read(input_file);
-    if (!graph) {
-      continue;
+
+    // Check the file extension
+    size_t dotPosition = input_file.find_last_of(".");
+    if (dotPosition != std::string::npos) {
+      std::string extension = input_file.substr(dotPosition + 1);
+
+      if (extension == "csv") {
+        // If it's a CSV file, call the parseCSVFile function
+        FactorGraphPtr graph(new FactorGraph);
+        parseCSVFile(input_file, graph);
+        if (graph) {
+          graphs[input_file] = graph;
+        }
+      } else if (extension == "boss") {
+        FactorGraphPtr graph = FactorGraph::read(input_file);
+        if (!graph) {
+          continue;
+        }
+        graphs[input_file] = graph;
+      }
     }
-    graphs[input_file] = graph;
   }
+
   if (graphs.empty()) {
     return -1;
   }
