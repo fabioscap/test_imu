@@ -103,7 +103,16 @@ int main(int argc, char* argv[]) {
   VarPoseImuType* prev_pose_var = new VarPoseImuType();
   prev_pose_var->setEstimate(init_pose);
   prev_pose_var->setGraphId(0);
-  prev_pose_var->setStatus(VariableBase::Status::Fixed);
+
+  // instead of fixing the first variable, we put a gps factor (translation prior)
+  // prev_pose_var->setStatus(VariableBase::Status::Fixed);
+  FactorGpsType* gps_factor = new FactorGpsType();
+  gps_factor->setVariableId(0, 0);
+  float sigma_gps = 0.2;
+  float info_gps  = 1 / (sigma_gps * sigma_gps);
+  gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
+  gps_factor->setMeasurement(init_gps_pose);
+
   graph->addVariable(VariableBasePtr(prev_pose_var));
 
   VarVelImuType* prev_vel_var = new VarVelImuType();
@@ -208,7 +217,7 @@ int main(int argc, char* argv[]) {
 
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());
-    float sigma_gps = 0.2;
+    float sigma_gps = 0.8;
     float info_gps  = 1 / (sigma_gps * sigma_gps);
     gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
     gps_factor->setMeasurement(curr_gps_pose);
@@ -218,9 +227,10 @@ int main(int argc, char* argv[]) {
     graph->addFactor(FactorBasePtr(gps_factor));
     imu_preintegrator->reset();
 
-    solver.setGraph(graph);
-
-    solver.compute();
+    if (i > 5) {
+      solver.setGraph(graph);
+      solver.compute();
+    }
     std::cerr << solver.iterationStats() << std::endl;
 
     prev_pose_var  = curr_pose_var;
