@@ -17,9 +17,10 @@ namespace test_imu {
     using Matrix3 = ImuPreintegratorBase::Matrix3;
 
     static constexpr int state_dim = 15;
+    static constexpr int input_dim = 6;
     static constexpr int noise_dim = 12;
 
-    using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + noise_dim>;
+    using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
 
     void preintegrate(const ImuMeasurement& m, Scalar dt) override;
     // allocates a new imu measurement
@@ -38,10 +39,12 @@ namespace test_imu {
                                         Euclidean_<3>, // dp
                                         Euclidean_<3>, // ba
                                         Euclidean_<3>, // bg
-                                        Euclidean_<3>, // na
-                                        Euclidean_<3>, // ng
+                                        Euclidean_<3>, // input acceleration
+                                        Euclidean_<3>  // input gyroscope
+                                        /* we add this as process noise
                                         Euclidean_<3>, // nba
                                         Euclidean_<3>  // nbg
+                                        */
                                         >;
     // DEBUG function
     void getPrediction(const core::Isometry3f& Ti,
@@ -53,7 +56,7 @@ namespace test_imu {
     DeltaManifold delta_incr_;
 
     // UKF: preallocate sigma joint input and state
-    CovJType sigma_joint_ = 1e-6 * CovJType::Identity();
+    CovJType sigma_joint_ = 1e-9 * CovJType::Identity();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;

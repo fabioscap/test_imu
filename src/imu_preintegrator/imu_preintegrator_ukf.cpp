@@ -67,14 +67,17 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, Scalar dt) {
 
   /* estimate updates */
   sigma_joint_.setZero();
-  sigma_joint_.block<state_dim, state_dim>(0, 0)                 = sigma_;
-  sigma_joint_.block<noise_dim, noise_dim>(state_dim, state_dim) = scaling_ * sigma_noise_;
+  sigma_joint_.block<state_dim, state_dim>(0, 0) = sigma_;
+  sigma_joint_.block<input_dim, input_dim>(state_dim, state_dim) =
+    (scaling_ * sigma_noise_).block<input_dim, input_dim>(0, 0);
 
   // UKF: set input mean
   delta_incr_.get<5>().setData(m.acceleration.cast<Scalar>());
   delta_incr_.get<6>().setData(m.angular_vel.cast<Scalar>());
 
-  UnscentedTransform::toUnscented(delta_incr_, sigma_joint_, spoints);
+  UnscentedTransform ut;
+  ut.alpha_ = 2e-3;
+  ut.toUnscented(delta_incr_, sigma_joint_, spoints);
 
   // for each sigma points we do forward dynamics
   for (size_t i = 0; i < spoints.points.size(); ++i) {
@@ -86,8 +89,8 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, Scalar dt) {
     const Vector3& bias_gyro       = point.get<4>().data();
     const Vector3& acc_noisy_meas  = point.get<5>().data();
     const Vector3& gyro_noisy_meas = point.get<6>().data();
-    const Vector3& noise_bacc      = point.get<7>().data();
-    const Vector3& noise_bgyro     = point.get<8>().data();
+    // const Vector3& noise_bacc      = point.get<7>().data();
+    // const Vector3& noise_bgyro     = point.get<8>().data();
 
     // nominal values or UKF-generated???????
     auto acc_c     = acc_noisy_meas - bias_acc;
@@ -105,16 +108,15 @@ void ImuPreintegratorUKF::preintegrate(const ImuMeasurement& m, Scalar dt) {
     Matrix3 temp = deltaR * dR;
     core::fixRotation(temp);
     point.get<0>().setData(temp.eval());
-
-    // bias evolution
-    point.get<3>().setData(bias_acc + noise_bacc);
-    point.get<4>().setData(bias_gyro + noise_bgyro);
   }
 
   // go back to normal parametrization
-  UnscentedTransform::toMeanCov(spoints, delta_incr_, sigma_joint_);
+  ut.toMeanCov(spoints, delta_incr_, sigma_joint_);
 
   sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
+
+  // add process noise
+  sigma_.block<6, 6>(9, 9) += (scaling_ * sigma_noise_).block<6, 6>(6, 6);
 
   dT_ += dt;
 }
