@@ -84,7 +84,7 @@ namespace test_imu {
 
     // allocate matrices for noise propagation
     A_.setIdentity();
-    B_.setIdentity();
+    B_.setZero();
   }
 
   void ImuPreintegratorSlim::getPrediction(const core::Isometry3f& Ti,

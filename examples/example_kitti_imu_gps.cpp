@@ -1,4 +1,6 @@
+#include <fstream>
 #include <iostream>
+
 #define _USE_MATH_DEFINES
 #include "variables_and_factors/imu_preintegration_factor.h"
 #include "variables_and_factors/instances.h"
@@ -15,9 +17,6 @@
 #include <srrg_system_utils/parse_command_line.h>
 #include <srrg_system_utils/shell_colors.h>
 
-#include <srrg_qgl_viewport/viewer_core_shared_qgl.h>
-#include <srrg_solver/solver_core/factor_graph.h>
-
 #include <thread>
 #include <unistd.h>
 
@@ -26,8 +25,6 @@
 using namespace std;
 using namespace srrg2_core;
 using namespace srrg2_solver;
-
-using namespace srrg2_qgl_viewport;
 
 const std::string example_folder("/workspace/src/test_imu");
 
@@ -65,6 +62,8 @@ void loadKittiData(KittiCalibration& kitti_calibration,
 void viewGraph(ViewerCanvasPtr canvas_);
 
 int main(int argc, char* argv[]) {
+  constexpr bool slim = false;
+
   bool use_ukf = false;
   bool use_imu = true;
   if (argc > 1) {
@@ -73,6 +72,11 @@ int main(int argc, char* argv[]) {
     else if (!std::strcmp(argv[1], "noimu"))
       use_imu = false;
   }
+
+  // inspect covariances
+  ofstream cov_dump(example_folder + "/covariance.txt");
+  ofstream det_dump(example_folder + "/determinant.txt");
+
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
 
@@ -91,8 +95,10 @@ int main(int argc, char* argv[]) {
   using VarPoseImuType = VariableSE3QuaternionRightAD;
   using VarVelImuType  = VariableVector3AD;
   using ImuBiasVar     = VariableVector3AD;
-  using FactorImuType  = ImuPreintegrationFactorAD;
+  using FactorImuType =
+    std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
   using FactorGpsType  = GpsErrorFactorAD;
+  using FactorBiasType = BiasErrorFactorAD;
 
   // initialization
 
@@ -108,7 +114,7 @@ int main(int argc, char* argv[]) {
   // prev_pose_var->setStatus(VariableBase::Status::Fixed);
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
-  float sigma_gps = 0.2;
+  float sigma_gps = 0.001;
   float info_gps  = 1 / (sigma_gps * sigma_gps);
   gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
   gps_factor->setMeasurement(init_gps_pose);
@@ -136,10 +142,14 @@ int main(int argc, char* argv[]) {
   size_t graph_id = 4;
 
   test_imu::ImuPreintegratorBase* imu_preintegrator;
-  if (use_ukf)
-    imu_preintegrator = new test_imu::ImuPreintegratorUKF();
-  else
-    imu_preintegrator = new test_imu::ImuPreintegrator();
+  if constexpr (slim)
+    imu_preintegrator = new test_imu::ImuPreintegratorSlim();
+  else {
+    if (use_ukf)
+      imu_preintegrator = new test_imu::ImuPreintegratorUKF();
+    else
+      imu_preintegrator = new test_imu::ImuPreintegrator();
+  }
 
   imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
   imu_preintegrator->setNoiseAccelerometer(
@@ -207,28 +217,45 @@ int main(int argc, char* argv[]) {
     imu_factor->setVariableId(2, curr_pose_var->graphId());
     imu_factor->setVariableId(3, curr_vel_var->graphId());
 
-    imu_factor->setVariableId(4, prev_bias_acc->graphId());
-    imu_factor->setVariableId(5, prev_bias_gyro->graphId());
+    if (!slim) {
+      imu_factor->setVariableId(4, prev_bias_acc->graphId());
+      imu_factor->setVariableId(5, prev_bias_gyro->graphId());
 
-    imu_factor->setVariableId(6, curr_bias_acc->graphId());
-    imu_factor->setVariableId(7, curr_bias_gyro->graphId());
+      imu_factor->setVariableId(6, curr_bias_acc->graphId());
+      imu_factor->setVariableId(7, curr_bias_gyro->graphId());
+    } else {
+      FactorBiasType* bias_factor = new FactorBiasType();
+      bias_factor->setVariableId(0, prev_bias_acc->graphId());
+      bias_factor->setVariableId(1, prev_bias_gyro->graphId());
+
+      bias_factor->setVariableId(2, curr_bias_acc->graphId());
+      bias_factor->setVariableId(3, curr_bias_gyro->graphId());
+
+      graph->addFactor(FactorBasePtr(bias_factor));
+    }
 
     imu_factor->setMeasurement(*imu_preintegrator);
 
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());
-    float sigma_gps = 0.8;
-    float info_gps  = 1 / (sigma_gps * sigma_gps);
+
     gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
     gps_factor->setMeasurement(curr_gps_pose);
 
     if (use_imu)
       graph->addFactor(FactorBasePtr(imu_factor));
     graph->addFactor(FactorBasePtr(gps_factor));
+
+    cov_dump << imu_preintegrator->sigma() << "\n\n";
+    det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
     if (i > 5) {
       solver.setGraph(graph);
+      solver.setGraph(graph);
+
+      solver.setGraph(graph);
+
       solver.compute();
     }
     std::cerr << solver.iterationStats() << std::endl;
@@ -267,6 +294,9 @@ int main(int argc, char* argv[]) {
            << "\n";
   }
   dumper.close();
+
+  cov_dump.close();
+  det_dump.close();
 
   /*   QApplication qapp(argc, argv);
     ViewerCoreSharedQGL viewer_core(argc, argv, &qapp);
@@ -366,42 +396,5 @@ void loadKittiData(KittiCalibration& kitti_calibration,
       measurement.position = Vector3f(gps_x, gps_y, gps_z);
       gps_measurements.push_back(measurement);
     }
-  }
-}
-
-std::map<std::string, FactorGraphPtr> graphs;
-
-bool gl_list_generated = false;
-void viewGraph(ViewerCanvasPtr canvas_) {
-  std::cerr << "canvas_ok" << std::endl;
-  while (ViewerCoreSharedQGL::isRunning()) {
-    if (!canvas_->_setup()) {
-      usleep(10000);
-      continue;
-    }
-    if (!gl_list_generated) {
-      for (auto& g_it : graphs) {
-        std::string name = g_it.first;
-        auto graph       = g_it.second;
-        canvas_->createList(name);
-        canvas_->beginList(name);
-        for (auto v : graph->variables()) {
-          v.second->_drawImpl(canvas_);
-        }
-
-        for (auto f : graph->factors()) {
-          f.second->_drawImpl(canvas_);
-        }
-        canvas_->endList();
-      }
-      gl_list_generated = true;
-    } else {
-      for (auto& g_it : graphs) {
-        std::string name = g_it.first;
-        canvas_->callList(name);
-      }
-    }
-    canvas_->flush();
-    sleep(1);
   }
 }

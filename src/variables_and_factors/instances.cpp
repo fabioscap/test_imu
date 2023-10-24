@@ -9,5 +9,7 @@ namespace srrg2_solver {
   // the serialization subsystem
   void variables_and_factors_imu_registerTypes() {
     BOSS_REGISTER_CLASS(ImuPreintegrationFactorAD)
+    BOSS_REGISTER_CLASS(ImuPreintegrationFactorSlimAD)
+    BOSS_REGISTER_CLASS(BiasErrorFactorAD)
   }
 } // namespace srrg2_solver

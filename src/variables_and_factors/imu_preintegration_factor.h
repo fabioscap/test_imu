@@ -30,22 +30,21 @@ namespace srrg2_solver {
                                                           VariableSE3QuaternionRightAD, // pose_to
                                                           VariableVector3AD,            // vel_to
                                                           VariableVector3AD,  // bias_acc_from
-                                                          VariableVector3AD,  // bias_acc_to
                                                           VariableVector3AD,  // bias_gyro_from
+                                                          VariableVector3AD,  // bias_acc_to
                                                           VariableVector3AD>, // bias_gyro_to,
                                     public ImuPreintegrationFactorBase {
   public:
-    // clang-format off
     using BaseType = ADErrorFactor_<15,
                                     VariableSE3QuaternionRightAD, // pose_from
                                     VariableVector3AD,            // vel_from
                                     VariableSE3QuaternionRightAD, // pose_to
                                     VariableVector3AD,            // vel_to
                                     VariableVector3AD,            // bias_acc_from
-                                    VariableVector3AD,            // bias_acc_to
                                     VariableVector3AD,            // bias_gyro_from
+                                    VariableVector3AD,            // bias_acc_to
                                     VariableVector3AD>;           // bias_gyro_to
-    // clang-format on
+
     using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
     using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
 
@@ -92,13 +91,12 @@ namespace srrg2_solver {
 
       public ImuPreintegrationFactorBase {
   public:
-    // clang-format off
     using BaseType = ADErrorFactor_<9,
                                     VariableSE3QuaternionRightAD, // pose_from
                                     VariableVector3AD,            // vel_from
                                     VariableSE3QuaternionRightAD, // pose_to
                                     VariableVector3AD>;           // vel_to
-    // clang-format on
+
     using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
     using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
 
@@ -107,11 +105,13 @@ namespace srrg2_solver {
 
     ADErrorVectorType operator()(VariableTupleType& vars);
 
-    void setMeasurement(const test_imu::ImuPreintegratorSlim& preintegrator);
+    void setMeasurement(const test_imu::ImuPreintegratorBase& preintegrator);
 
     inline void grav(const Vector3f& grav) {
       convertMatrix(grav_, grav);
     }
+
+    void _drawImpl(ViewerCanvasPtr canvas_) const override;
 
     // protected:
     dMatrix3f delta_R_;
@@ -121,5 +121,30 @@ namespace srrg2_solver {
     DualValuef dT_;
 
     dVector3f grav_;
+  };
+
+  class BiasErrorFactorAD : public ADErrorFactor_<6,
+                                                  VariableVector3AD, // bias acc from
+                                                  VariableVector3AD, // bias_gyro_from
+                                                  VariableVector3AD, // bias acc to
+                                                  VariableVector3AD> // bias_gyro_to
+
+  {
+  public:
+    using BaseType = ADErrorFactor_<6,
+                                    VariableVector3AD,  // bias acc from
+                                    VariableVector3AD,  // bias_gyro_from
+                                    VariableVector3AD,  // bias acc to
+                                    VariableVector3AD>; // bias_gyro_to
+
+    using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
+    using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
+
+    using ADErrorVectorType = typename BaseType::ADErrorVectorType;
+    using VariableTupleType = typename BaseType::VariableTupleType;
+
+    ADErrorVectorType operator()(VariableTupleType& vars);
+
+    inline void _drawImpl(ViewerCanvasPtr canvas_) const override{};
   };
 } // namespace srrg2_solver

@@ -102,7 +102,7 @@ namespace srrg2_solver {
   }
 
   void ImuPreintegrationFactorSlimAD::setMeasurement(
-    const test_imu::ImuPreintegratorSlim& preintegrator) {
+    const test_imu::ImuPreintegratorBase& preintegrator) {
     convertMatrix(delta_R_, preintegrator.delta_R());
     convertMatrix(delta_v_, preintegrator.delta_v());
     convertMatrix(delta_p_, preintegrator.delta_p());
@@ -135,6 +135,46 @@ namespace srrg2_solver {
     canvas_->popAttribute();
   }
 
+  void ImuPreintegrationFactorSlimAD::_drawImpl(ViewerCanvasPtr canvas_) const {
+    Vector3f coords[2];
+    coords[0] =
+      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(0))->estimate().translation();
+    coords[1] =
+      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(2))->estimate().translation();
+
+    float lw = 0.5;
+    if (fabs(variableId(0) - variableId(1)) == 1) {
+      lw *= 2;
+    }
+    lw *= (level() * 3 + 1);
+    canvas_->pushColor();
+    canvas_->pushLineWidth();
+    canvas_->setLineWidth(lw);
+    float fading   = 1. - 0.5 * level();
+    Vector3f color = srrg2_core::ColorPalette::color3fBlue() * fading;
+    canvas_->setColor(color);
+    canvas_->putLine(2, coords);
+    canvas_->popAttribute();
+    canvas_->popAttribute();
+  }
+
+  BiasErrorFactorAD::ADErrorVectorType BiasErrorFactorAD::operator()(VariableTupleType& vars) {
+    const dVector3f& bias_acc_i  = vars.at<0>()->adEstimate();
+    const dVector3f& bias_gyro_i = vars.at<1>()->adEstimate();
+    const dVector3f& bias_acc_j  = vars.at<2>()->adEstimate();
+    const dVector3f& bias_gyro_j = vars.at<3>()->adEstimate();
+
+    ADErrorVectorType error;
+
+    error.segment<3>(0) = bias_acc_j - bias_acc_i;
+    error.segment<3>(3) = bias_gyro_j - bias_gyro_i;
+
+    return error;
+  }
+
   INSTANTIATE(ImuPreintegrationFactorAD)
+  INSTANTIATE(ImuPreintegrationFactorSlimAD)
+  INSTANTIATE(BiasErrorFactorAD)
+
   // BOSS_REGISTER_AND_INSTANTIATE(ImuPreintegrationFactorSlimAD)
 } // namespace srrg2_solver
