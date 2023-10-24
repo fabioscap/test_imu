@@ -39,6 +39,15 @@ target_link_libraries(example_kitti_imu_gps
                       GL
                       pthread
 )
+add_executable(imu_gps_synthetic imu_gps_synthetic.cpp)
+target_link_libraries(imu_gps_synthetic
+                      common
+                      imu_preintegrator
+                      synthetic
+                      preintegration_factor
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+)
 
 add_executable(example_kitti_imu_gps_gtsam example_kitti_imu_gps_gtsam.cpp)
 target_link_libraries(example_kitti_imu_gps_gtsam
