@@ -80,8 +80,11 @@ namespace test_imu {
     float cov_regularizer = 1e-10;
 
     // Perform Cholesky decomposition
-    Eigen::LLT<CovType<StateType>> llt((state_dim + lambda) *
-                                       (cov + CovType<StateType>::Identity() * cov_regularizer));
+    // Eigen::LLT<CovType<StateType>> llt((state_dim + lambda) *
+    //                                   (cov + CovType<StateType>::Identity() * cov_regularizer));
+
+    // hertzberg weights
+    Eigen::LLT<CovType<StateType>> llt((cov + CovType<StateType>::Identity() * cov_regularizer));
 
     // Eigen::LLT<CovType<StateType>> llt((cov + CovType<StateType>::Identity() * cov_regularizer));
 
