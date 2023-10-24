@@ -26,7 +26,7 @@ ARG SF_NAME="test_imu"
 RUN cd /workspace/src/ && mkdir $SF_NAME
 
 # gtsam
-RUN cd / && git clone https://github.com/borglab/gtsam && cd gtsam && mkdir build && cd build && cmake ../  -DGTSAM_USE_SYSTEM_EIGEN=ON && make install
+RUN cd / && git clone https://github.com/borglab/gtsam && cd gtsam && mkdir build && cd build && cmake ../  -DGTSAM_USE_SYSTEM_EIGEN=ON -DGTSAM_TANGENT_PREINTEGRATION=OFF && make install 
 
 
 WORKDIR /
