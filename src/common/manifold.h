@@ -2,6 +2,9 @@
 
 #include "common.h"
 #include <srrg_geometry/geometry3d.h>
+
+// TODO move as much definitions as possible into impl
+
 namespace test_imu {
 
   template <int dim>
@@ -26,14 +29,10 @@ namespace test_imu {
     }
 
     // redefine these two methods
-    ThisType boxplus(const TangentType&) const {
-      throw std::runtime_error("boxplus not defined");
-    }
+    ThisType boxplus(const TangentType&) const;
 
     // convention for boxminus: compute chart around *this
-    TangentType boxminus(const ThisType&) const {
-      throw std::runtime_error("boxminus not defined");
-    }
+    TangentType boxminus(const ThisType&) const;
 
   protected:
     DataType data_;
@@ -78,26 +77,16 @@ namespace test_imu {
 
     ManifoldComp_(const Manifold& m);
 
-    ThisType boxplus(const TangentType& dsp) const {
-      return ThisType(manifold_.boxplus(dsp));
-    }
+    ThisType boxplus(const TangentType& dsp) const;
 
     // convention for boxminus: compute chart around *this
-    TangentType boxminus(const ThisType& to) const {
-      return manifold_.boxminus(to.get<0>());
-    }
+    TangentType boxminus(const ThisType& to) const;
 
     template <size_t N>
-    const Manifold& get() const {
-      static_assert(N == 0, "Index out of range");
-      return manifold_;
-    }
+    const Manifold& get() const;
 
     template <size_t N>
-    Manifold& get() {
-      static_assert(N == 0, "Index out of range");
-      return manifold_;
-    }
+    Manifold& get();
 
   protected:
     Manifold manifold_;
@@ -111,40 +100,16 @@ namespace test_imu {
     using TangentType        = TangentType_<dim>;
 
     // I hope compiler does return value optimization
-    ThisType boxplus(const TangentType& dsp) const {
-      ThisType out;
-      // the first
-      out.get<0>() = manifold_.boxplus(dsp.head(manifold_.dim));
-      // the rest
-      out.rest_ = rest_.boxplus(dsp.tail(dim - manifold_.dim));
-      return out;
-    }
+    ThisType boxplus(const TangentType& dsp) const;
 
     // convention for boxminus: compute chart around *this
-    TangentType boxminus(const ThisType& to) const {
-      TangentType out;
-      // the first
-      out.head(manifold_.dim) = manifold_.boxminus(to.get<0>());
-      // the rest
-      out.tail(dim - manifold_.dim) = rest_.boxminus(to.rest_);
-      return out;
-    }
+    TangentType boxminus(const ThisType& to) const;
 
     template <size_t N>
-    auto& get() {
-      if constexpr (N == 0)
-        return manifold_;
-      else
-        return rest_.template get<N - 1>();
-    }
+    auto& get();
 
     template <size_t N>
-    const auto& get() const {
-      if constexpr (N == 0)
-        return manifold_;
-      else
-        return rest_.template get<N - 1>();
-    }
+    const auto& get() const;
 
   protected:
     Manifold manifold_;
