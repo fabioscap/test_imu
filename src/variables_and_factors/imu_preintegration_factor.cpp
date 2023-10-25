@@ -1,6 +1,5 @@
 #include "imu_preintegration_factor.h"
 
-// include these two files otherwise nothing works and pia foco
 #include <srrg_solver/solver_core/ad_error_factor_impl.cpp>
 #include <srrg_solver/solver_core/error_factor_impl.cpp>
 

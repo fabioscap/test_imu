@@ -1,5 +1,5 @@
 add_library(imu_preintegrator SHARED
-imu_preintegrator_slim.cpp
+imu_preintegrator_base.cpp
 imu_preintegrator.cpp
 imu_preintegrator_ukf.cpp)
 

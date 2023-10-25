@@ -2,9 +2,7 @@
 
 #include "common/common.h"
 
-#include "imu_preintegrator/imu_preintegrator.h"
-#include "imu_preintegrator/imu_preintegrator_slim.h"
-#include "imu_preintegrator/imu_preintegrator_ukf.h"
+#include "imu_preintegrator/imu_preintegrator_base.h"
 
 #include <srrg_solver/solver_core/ad_error_factor.h>
 #include <srrg_solver/solver_core/error_factor.h>

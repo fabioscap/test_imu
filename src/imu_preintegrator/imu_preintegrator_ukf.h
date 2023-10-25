@@ -1,10 +1,9 @@
 #pragma once
 
-#include "common/common.h"
 #include "common/manifold.h"
 #include "common/unscented.h"
 
-#include "imu_preintegrator.h"
+#include "imu_preintegrator_base.h"
 
 namespace test_imu {
 

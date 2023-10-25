@@ -2,197 +2,233 @@
 
 #include <srrg_geometry/geometry3d.h>
 
-#define PHIidx 0 // phi
-#define Vidx 3   // vel
-#define Pidx 6   // pos
-#define BAidx 9  // bias acc
-#define BGidx 12 // bias gyro
-
-#define NGidx 0  // noise gyro
-#define NAidx 3  // noise acc
-#define NBGidx 6 // bias random walk noise gyro
-#define NBAidx 9 // bias random walk noise acc
-
 // Those two values make the covariance singular
 // #define NBGIidx 12 // bias initial uncertainty gyro
 // #define NBAIidx 15 // bias initial uncertainty acc
 
-using namespace test_imu;
+namespace test_imu {
 
-void ImuPreintegrator::preintegrate(const ImuMeasurement& m, Scalar dt) {
-  measurements_.push_back(m);
+  void ImuPreintegrator::preintegrate(const ImuMeasurement& m, Scalar dt) {
+    measurements_.push_back(m);
 
-  // correct the measurements
-  Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
-  Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
+    // correct the measurements
+    Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+    Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
 
-  // auxiliary variables
-  Vector3 dtheta = ang_vel_c * dt;
-  auto acc_skew  = core::geometry3d::skew(acc_c);
-  auto dR        = core::geometry3d::expMapSO3(dtheta);
-  core::fixRotation(dR);
-  auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
+    // auxiliary variables
+    Vector3 dtheta = ang_vel_c * dt;
+    auto acc_skew  = core::geometry3d::skew(acc_c);
+    auto dR        = core::geometry3d::expMapSO3(dtheta);
+    core::fixRotation(dR);
+    auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
 
-  /* covariance matrix update through iterative first order propagation */
-  // we do it before updating the estimates because it uses old delta_R
+    /* covariance matrix update through iterative first order propagation */
+    // we do it before updating the estimates because it uses old delta_R
 
-  // the biases jacobians are the same as the noise jacobians because
-  // acc = acc_tilde - bias - noise
-  // they are interchangeable
+    // the biases jacobians are the same as the noise jacobians because
+    // acc = acc_tilde - bias - noise
+    // they are interchangeable
 
-  // since preintegration needs biases, which are an estimation variable with associated covariance,
-  // we also include the initial covariance of the estimate in the first order propagation // NO
+    // since preintegration needs biases, which are an estimation variable with associated
+    // covariance, we also include the initial covariance of the estimate in the first order
+    // propagation // NO
 
-  // A_ ...
-  A_.setIdentity(); // necessary?
-  // dphi_dphi
-  A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
-  // dphi_dv: 0, dphi_dp: 0, dphi_dbacc: 0
-  // dphi_dbgyro
-  A_.block<3, 3>(PHIidx, BGidx) = dt * Jr;
-  // dv_dphi
-  A_.block<3, 3>(Vidx, PHIidx) = -delta_R_ * acc_skew * dt;
-  // dv_dv: I, dv_dp: 0, dv_dbgyro: 0,
-  // dv_dbacc
-  A_.block<3, 3>(Vidx, BAidx) = delta_R_ * dt;
-  // dp_dphi
-  A_.block<3, 3>(Pidx, PHIidx) = -0.5 * delta_R_ * acc_skew * dt * dt;
-  // dp_dv
-  A_.block<3, 3>(Pidx, Vidx) = Matrix3::Identity() * dt;
-  // dp_dp: I , dp_dbgyro: 0
-  // dp_dbacc
-  A_.block<3, 3>(Pidx, BAidx) = 0.5 * delta_R_ * dt * dt;
-  // dbgyro_dphi: 0, dbgyro_dv: 0, dbgyro_dp: 0, dbgyro_dbgyro: I, dbgyro_dbacc: 0, dbacc_dphi: 0,
-  // dbacc_dv: 0, dbacc_dp: 0, dbacc_dbgyro: 0, dbacc_dbacc: I
+    // A_ ...
+    A_.setIdentity(); // necessary?
+    // dphi_dphi
+    A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
+    // dphi_dv: 0, dphi_dp: 0, dphi_dbacc: 0
+    // dphi_dbgyro
+    A_.block<3, 3>(PHIidx, BGidx) = dt * Jr;
+    // dv_dphi
+    A_.block<3, 3>(Vidx, PHIidx) = -delta_R_ * acc_skew * dt;
+    // dv_dv: I, dv_dp: 0, dv_dbgyro: 0,
+    // dv_dbacc
+    A_.block<3, 3>(Vidx, BAidx) = delta_R_ * dt;
+    // dp_dphi
+    A_.block<3, 3>(Pidx, PHIidx) = -0.5 * delta_R_ * acc_skew * dt * dt;
+    // dp_dv
+    A_.block<3, 3>(Pidx, Vidx) = Matrix3::Identity() * dt;
+    // dp_dp: I , dp_dbgyro: 0
+    // dp_dbacc
+    A_.block<3, 3>(Pidx, BAidx) = 0.5 * delta_R_ * dt * dt;
+    // dbgyro_dphi: 0, dbgyro_dv: 0, dbgyro_dp: 0, dbgyro_dbgyro: I, dbgyro_dbacc: 0, dbacc_dphi: 0,
+    // dbacc_dv: 0, dbacc_dp: 0, dbacc_dbgyro: 0, dbacc_dbacc: I
 
-  // B_ ...
-  B_.setZero(); // necessary?
-  // dphi_dgyro_noise
-  B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
-  // dphi_dacc_noise: 0,dphi_dbgyro_noise: 0, dphi_dbacc_noise: 0
-  // dphi_dbgyro_noise_init
-  // B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
-  // dphi_dbacc_noise_init: 0, dv_dgyro_noise: 0
-  // dv_dacc_noise
-  B_.block<3, 3>(Vidx, NAidx) = delta_R_ * dt;
-  // dv_dbgyro_noise: 0, dv_dbacc_noise: 0, dv_dbgyro_noise_init: 0,
-  // dv_dbacc_noise_init
-  // B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
-  // dp_dgyro_noise: 0
-  // dp_dacc_noise
-  B_.block<3, 3>(Pidx, NAidx) = 0.5 * delta_R_ * dt * dt;
-  // dp_dbgyro_noise: 0, dp_dbacc_noise: 0, dp_dbgyro_noise_init: 0,
-  // dp_dbacc_noise_init
-  // B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
-  // dbgyro_dgyro_noise: 0, dbgyro_dacc_noise: 0
-  // dbgyro_dbgyro_noise:
-  B_.block<3, 3>(BGidx, NBGidx) = Matrix3::Identity();
-  // dbgyro_dbacc_noise: 0, dbgyro_dbgyro_noise_init: 0, dbgyro_dbacc_noise_init: 0,
-  // dbacc_dgyro_noise: 0, dbacc_dacc_noise: 0, dbacc_dbgyro_noise: 0
-  // dbacc_dbacc_noise
-  B_.block<3, 3>(BAidx, NBAidx) = Matrix3::Identity();
-  // dbacc_dbgyro_noise_init: 0, dbacc_dbacc_noise_init: 0
+    // B_ ...
+    B_.setZero(); // necessary?
+    // dphi_dgyro_noise
+    B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
+    // dphi_dacc_noise: 0,dphi_dbgyro_noise: 0, dphi_dbacc_noise: 0
+    // dphi_dbgyro_noise_init
+    // B_.block<3, 3>(PHIidx, NBGIidx) = dt * Jr;
+    // dphi_dbacc_noise_init: 0, dv_dgyro_noise: 0
+    // dv_dacc_noise
+    B_.block<3, 3>(Vidx, NAidx) = delta_R_ * dt;
+    // dv_dbgyro_noise: 0, dv_dbacc_noise: 0, dv_dbgyro_noise_init: 0,
+    // dv_dbacc_noise_init
+    // B_.block<3, 3>(Vidx, NBAIidx) = delta_R_ * dt;
+    // dp_dgyro_noise: 0
+    // dp_dacc_noise
+    B_.block<3, 3>(Pidx, NAidx) = 0.5 * delta_R_ * dt * dt;
+    // dp_dbgyro_noise: 0, dp_dbacc_noise: 0, dp_dbgyro_noise_init: 0,
+    // dp_dbacc_noise_init
+    // B_.block<3, 3>(Pidx, NBAIidx) = 0.5 * delta_R_ * dt * dt;
+    // dbgyro_dgyro_noise: 0, dbgyro_dacc_noise: 0
+    // dbgyro_dbgyro_noise:
+    B_.block<3, 3>(BGidx, NBGidx) = Matrix3::Identity();
+    // dbgyro_dbacc_noise: 0, dbgyro_dbgyro_noise_init: 0, dbgyro_dbacc_noise_init: 0,
+    // dbacc_dgyro_noise: 0, dbacc_dacc_noise: 0, dbacc_dbgyro_noise: 0
+    // dbacc_dbacc_noise
+    B_.block<3, 3>(BAidx, NBAidx) = Matrix3::Identity();
+    // dbacc_dbgyro_noise_init: 0, dbacc_dbacc_noise_init: 0
 
-  // TODO B is sparse and sigma_noise_ is block diagonal
-  // it is possible to do this much quicker
-  scaling_.setIdentity(); // necessary?
-  // it can also be precomputed if dt is constant
-  scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
-  scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
-  // scaling_.block<3, 3>(NBGIidx, NBGIidx) = Matrix3::Identity() / dt;
-  // scaling_.block<3, 3>(NBAIidx, NBAIidx) = Matrix3::Identity() / dt;
-  scaling_.block<3, 3>(NBGidx, NBGidx) = Matrix3::Identity() * dt;
-  scaling_.block<3, 3>(NBAidx, NBAidx) = Matrix3::Identity() * dt;
+    // TODO B is sparse and sigma_noise_ is block diagonal
+    // it is possible to do this much quicker
+    scaling_.setIdentity(); // necessary?
+    // it can also be precomputed if dt is constant
+    scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
+    scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
+    // scaling_.block<3, 3>(NBGIidx, NBGIidx) = Matrix3::Identity() / dt;
+    // scaling_.block<3, 3>(NBAIidx, NBAIidx) = Matrix3::Identity() / dt;
+    scaling_.block<3, 3>(NBGidx, NBGidx) = Matrix3::Identity() * dt;
+    scaling_.block<3, 3>(NBAidx, NBAidx) = Matrix3::Identity() * dt;
 
-  /*   std::cout << "B:\n" << B_ << std::endl;
-    std::cout << "scaling_* sigma_noise_\n" << scaling_ * sigma_noise_ << "\n";
-    std::cout << "Det\n"
-              << (scaling_ * sigma_noise_).determinant() << "->"
-              << (B_ * scaling_ * sigma_noise_ * B_.transpose()).determinant() << "\n";
-   */
-  sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
-  // sigma_ = CovType::Identity(state_dim, state_dim);
-  /* bias correction jacobians */
-  // Position
-  dp_db_acc_ += dv_db_acc_ * dt - 0.5 * delta_R_ * dt * dt;
-  dp_db_gyro_ += dv_db_gyro_ * dt - 0.5 * delta_R_ * acc_skew * dR_db_gyro_ * dt * dt;
+    /*   std::cout << "B:\n" << B_ << std::endl;
+      std::cout << "scaling_* sigma_noise_\n" << scaling_ * sigma_noise_ << "\n";
+      std::cout << "Det\n"
+                << (scaling_ * sigma_noise_).determinant() << "->"
+                << (B_ * scaling_ * sigma_noise_ * B_.transpose()).determinant() << "\n";
+     */
+    sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
+    // sigma_ = CovType::Identity(state_dim, state_dim);
+    /* bias correction jacobians */
+    // Position
+    dp_db_acc_ += dv_db_acc_ * dt - 0.5 * delta_R_ * dt * dt;
+    dp_db_gyro_ += dv_db_gyro_ * dt - 0.5 * delta_R_ * acc_skew * dR_db_gyro_ * dt * dt;
 
-  // Velocity
-  dv_db_acc_ -= delta_R_ * dt;
-  dv_db_gyro_ -= delta_R_ * acc_skew * dR_db_gyro_ * dt;
+    // Velocity
+    dv_db_acc_ -= delta_R_ * dt;
+    dv_db_gyro_ -= delta_R_ * acc_skew * dR_db_gyro_ * dt;
 
-  // Rotation
-  // remember that dR_j_j = I
-  dR_db_gyro_ = dR.transpose() * dR_db_gyro_ - Jr * dt;
+    // Rotation
+    // remember that dR_j_j = I
+    dR_db_gyro_ = dR.transpose() * dR_db_gyro_ - Jr * dt;
 
-  /* estimate updates */
-  // update the position
-  auto dva = delta_R_ * (acc_c) *dt;
-  delta_p_ += (delta_v_ + 0.5 * dva) * dt;
+    /* estimate updates */
+    // update the position
+    auto dva = delta_R_ * (acc_c) *dt;
+    delta_p_ += (delta_v_ + 0.5 * dva) * dt;
 
-  // update the velocity
-  delta_v_ += dva;
+    // update the velocity
+    delta_v_ += dva;
 
-  // update orientation
-  delta_R_ *= dR;
-  core::fixRotation(delta_R_);
+    // update orientation
+    delta_R_ *= dR;
+    core::fixRotation(delta_R_);
 
-  dT_ += dt;
-}
+    dT_ += dt;
+  }
 
-void ImuPreintegrator::reset() {
-  ImuPreintegratorBase::reset();
+  void ImuPreintegrator::reset() {
+    ImuPreintegratorBase::reset();
 
-  delta_p_ = Vector3::Zero();
-  delta_R_ = Matrix3::Identity();
-  delta_v_ = Vector3::Zero();
+    delta_p_ = Vector3::Zero();
+    delta_R_ = Matrix3::Identity();
+    delta_v_ = Vector3::Zero();
 
-  // allocate matrices for noise propagation
-  A_.setIdentity();
-  B_.setIdentity();
-}
+    // allocate matrices for noise propagation
+    A_.setIdentity();
+    B_.setZero();
+  }
 
-void ImuPreintegratorBase::reset() {
-  measurements_.clear();
-  dT_ = 0;
+  void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
+                                       const core::Vector3f& vi,
+                                       core::Isometry3f& Tf,
+                                       core::Vector3f& vf) {
+    Tf.setIdentity();
 
-  sigma_ = CovType::Zero(state_dim, state_dim);
+    float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
 
-  // nominal values for the bias
-  bias_acc_  = Vector3::Zero();
-  bias_gyro_ = Vector3::Zero();
+    vf = Ti.linear() * delta_v() + vi;
 
-  // bias correction
-  dR_db_gyro_ = Matrix3::Zero();
-  dv_db_acc_  = Matrix3::Zero();
-  dv_db_gyro_ = Matrix3::Zero();
-  dp_db_acc_  = Matrix3::Zero();
-  dp_db_gyro_ = Matrix3::Zero();
-}
+    Tf.linear()      = Ti.linear() * delta_R();
+    Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
+  }
 
-void ImuPreintegrator::getPrediction(const core::Isometry3f& Ti,
-                                     const core::Vector3f& vi,
-                                     core::Isometry3f& Tf,
-                                     core::Vector3f& vf) {
-  Tf.setIdentity();
+  void ImuPreintegratorSlim::preintegrate(const ImuMeasurement& m, Scalar dt) {
+    measurements_.push_back(m);
 
-  float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
+    // correct the measurements
+    Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+    Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
 
-  vf = Ti.linear() * delta_v() + vi;
+    // auxiliary variables
+    Vector3 dtheta = ang_vel_c * dt;
+    auto acc_skew  = core::geometry3d::skew(acc_c);
+    auto dR        = core::geometry3d::expMapSO3(dtheta);
+    core::fixRotation(dR);
+    auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
 
-  Tf.linear()      = Ti.linear() * delta_R();
-  Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
-}
+    // A_ ...
+    A_.setIdentity(); // necessary?
+    A_.block<3, 3>(PHIidx, PHIidx) = dR.transpose();
+    A_.block<3, 3>(Vidx, PHIidx)   = -delta_R_ * acc_skew * dt;
+    A_.block<3, 3>(Pidx, PHIidx)   = -0.5 * delta_R_ * acc_skew * dt * dt;
+    A_.block<3, 3>(Pidx, Vidx)     = Matrix3::Identity() * dt;
 
-const void ImuPreintegratorBase::setNoiseGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NGidx, NGidx) = v.cast<Scalar>().asDiagonal();
-}
-const void ImuPreintegratorBase::setNoiseAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NAidx, NAidx) = v.cast<Scalar>().asDiagonal();
-}
-const void ImuPreintegratorBase::setNoiseBiasGyroscope(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.cast<Scalar>().asDiagonal();
-}
-const void ImuPreintegratorBase::setNoiseBiasAccelerometer(const core::Vector3f& v) {
-  sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.cast<Scalar>().asDiagonal();
-}
+    // B_ ...
+    B_.setZero(); // necessary?
+    B_.block<3, 3>(PHIidx, NGidx) = dt * Jr;
+    B_.block<3, 3>(Vidx, NAidx)   = delta_R_ * dt;
+    B_.block<3, 3>(Pidx, NAidx)   = 0.5 * delta_R_ * dt * dt;
+
+    // it is possible to do this much quicker
+    scaling_.setIdentity(); // necessary?
+    // it can also be precomputed if dt is constant
+    scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
+    scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
+
+    sigma_ = A_ * sigma_ * A_.transpose() + B_ * scaling_ * sigma_noise_ * B_.transpose();
+
+    /* estimate updates */
+    // update the position
+    auto dva = delta_R_ * (acc_c) *dt;
+    delta_p_ += (delta_v_ + 0.5 * dva) * dt;
+
+    // update the velocity
+    delta_v_ += dva;
+
+    // update orientation
+    delta_R_ *= dR;
+    core::fixRotation(delta_R_);
+
+    dT_ += dt;
+  }
+  void ImuPreintegratorSlim::reset() {
+    ImuPreintegratorBase::reset();
+
+    delta_p_ = Vector3::Zero();
+    delta_R_ = Matrix3::Identity();
+    delta_v_ = Vector3::Zero();
+
+    // allocate matrices for noise propagation
+    A_.setIdentity();
+    B_.setZero();
+  }
+
+  void ImuPreintegratorSlim::getPrediction(const core::Isometry3f& Ti,
+                                           const core::Vector3f& vi,
+                                           core::Isometry3f& Tf,
+                                           core::Vector3f& vf) {
+    Tf.setIdentity();
+
+    float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
+
+    vf = Ti.linear() * delta_v() + vi;
+
+    Tf.linear()      = Ti.linear() * delta_R();
+    Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
+  }
+
+} // namespace test_imu
