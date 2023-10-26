@@ -3,7 +3,6 @@
 #include "synthetic/synthetic.h"
 
 #include "imu_preintegrator/imu_preintegrator.h"
-#include "imu_preintegrator/imu_preintegrator_slim.h"
 #include "imu_preintegrator/imu_preintegrator_ukf.h"
 
 #include "common/manifold_impl.cpp"
@@ -13,7 +12,7 @@
 int main() {
   using namespace test_imu;
 
-  using PreintegratorType = ImuPreintegrator;
+  using PreintegratorType = ImuPreintegratorUKFSlim;
   using TrajectoryType    = SE3EightTrajectory;
 
   std::ofstream out_pred("/workspace/src/test_imu/examples/output_pred.txt");

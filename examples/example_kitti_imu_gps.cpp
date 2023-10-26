@@ -5,6 +5,9 @@
 #include "variables_and_factors/imu_preintegration_factor.h"
 #include "variables_and_factors/instances.h"
 
+#include "imu_preintegrator/imu_preintegrator.h"
+#include "imu_preintegrator/imu_preintegrator_ukf.h"
+
 #include "srrg_solver/solver_core/factor_graph.h"
 #include "srrg_solver/solver_core/instances.h"
 
@@ -61,17 +64,19 @@ void loadKittiData(KittiCalibration& kitti_calibration,
 
 void viewGraph(ViewerCanvasPtr canvas_);
 
-int main(int argc, char* argv[]) {
-  constexpr bool slim = false;
+bool string_in_array(const string& query, int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == query)
+      return true;
 
-  bool use_ukf = false;
-  bool use_imu = true;
-  if (argc > 1) {
-    if (!std::strcmp(argv[1], "ukf"))
-      use_ukf = true;
-    else if (!std::strcmp(argv[1], "noimu"))
-      use_imu = false;
-  }
+  return false;
+}
+
+int main(int argc, char* argv[]) {
+  bool use_ukf  = string_in_array("ukf", argc, argv);
+  bool use_imu  = !string_in_array("noimu", argc, argv);
+  bool use_slim = string_in_array("slim", argc, argv);
+  bool use_gps  = !string_in_array("nogps", argc, argv);
 
   // inspect covariances
   ofstream cov_dump(example_folder + "/covariance.txt");
@@ -95,8 +100,6 @@ int main(int argc, char* argv[]) {
   using VarPoseImuType = VariableSE3QuaternionRightAD;
   using VarVelImuType  = VariableVector3AD;
   using ImuBiasVar     = VariableVector3AD;
-  using FactorImuType =
-    std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
   using FactorGpsType  = GpsErrorFactorAD;
   using FactorBiasType = BiasErrorFactorAD;
 
@@ -142,13 +145,24 @@ int main(int argc, char* argv[]) {
   size_t graph_id = 4;
 
   test_imu::ImuPreintegratorBase* imu_preintegrator;
-  if constexpr (slim)
-    imu_preintegrator = new test_imu::ImuPreintegratorSlim();
-  else {
-    if (use_ukf)
+  if (use_slim) {
+    std::cout << "slim ";
+    if (use_ukf) {
+      std::cout << "ukf\n";
+      imu_preintegrator = new test_imu::ImuPreintegratorUKFSlim();
+    } else {
+      std::cout << "normal\n";
+      imu_preintegrator = new test_imu::ImuPreintegratorSlim();
+    }
+  } else {
+    std::cout << "full ";
+    if (use_ukf) {
+      std::cout << "ukf\n";
       imu_preintegrator = new test_imu::ImuPreintegratorUKF();
-    else
+    } else {
+      std::cout << "normal\n";
       imu_preintegrator = new test_imu::ImuPreintegrator();
+    }
   }
 
   imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
@@ -210,20 +224,32 @@ int main(int argc, char* argv[]) {
     graph->addVariable(VariableBasePtr(curr_bias_acc));
     graph->addVariable(VariableBasePtr(curr_bias_gyro));
 
-    FactorImuType* imu_factor = new FactorImuType();
-    imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
-    imu_factor->setVariableId(0, prev_pose_var->graphId());
-    imu_factor->setVariableId(1, prev_vel_var->graphId());
-    imu_factor->setVariableId(2, curr_pose_var->graphId());
-    imu_factor->setVariableId(3, curr_vel_var->graphId());
+    if (!use_slim) {
+      std::cout << "full factor\n";
+      ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
+      imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
+      imu_factor->setVariableId(0, prev_pose_var->graphId());
+      imu_factor->setVariableId(1, prev_vel_var->graphId());
+      imu_factor->setVariableId(2, curr_pose_var->graphId());
+      imu_factor->setVariableId(3, curr_vel_var->graphId());
 
-    if (!slim) {
       imu_factor->setVariableId(4, prev_bias_acc->graphId());
       imu_factor->setVariableId(5, prev_bias_gyro->graphId());
 
       imu_factor->setVariableId(6, curr_bias_acc->graphId());
       imu_factor->setVariableId(7, curr_bias_gyro->graphId());
+      imu_factor->setMeasurement(*imu_preintegrator);
+      if (use_imu)
+        graph->addFactor(FactorBasePtr(imu_factor));
     } else {
+      std::cout << "slim factor\n";
+      ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
+      imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
+      imu_factor->setVariableId(0, prev_pose_var->graphId());
+      imu_factor->setVariableId(1, prev_vel_var->graphId());
+      imu_factor->setVariableId(2, curr_pose_var->graphId());
+      imu_factor->setVariableId(3, curr_vel_var->graphId());
+
       FactorBiasType* bias_factor = new FactorBiasType();
       bias_factor->setVariableId(0, prev_bias_acc->graphId());
       bias_factor->setVariableId(1, prev_bias_gyro->graphId());
@@ -231,10 +257,12 @@ int main(int argc, char* argv[]) {
       bias_factor->setVariableId(2, curr_bias_acc->graphId());
       bias_factor->setVariableId(3, curr_bias_gyro->graphId());
 
-      graph->addFactor(FactorBasePtr(bias_factor));
+      imu_factor->setMeasurement(*imu_preintegrator);
+      if (use_imu) {
+        graph->addFactor(FactorBasePtr(bias_factor));
+        graph->addFactor(FactorBasePtr(imu_factor));
+      }
     }
-
-    imu_factor->setMeasurement(*imu_preintegrator);
 
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());
@@ -242,30 +270,23 @@ int main(int argc, char* argv[]) {
     gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
     gps_factor->setMeasurement(curr_gps_pose);
 
-    if (use_imu)
-      graph->addFactor(FactorBasePtr(imu_factor));
-    graph->addFactor(FactorBasePtr(gps_factor));
-
+    if (use_gps) {
+      graph->addFactor(FactorBasePtr(gps_factor));
+    }
     cov_dump << imu_preintegrator->sigma() << "\n\n";
     det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
-    if (i > 5) {
-      solver.setGraph(graph);
-      solver.setGraph(graph);
+    solver.setGraph(graph);
 
-      solver.setGraph(graph);
+    solver.compute();
 
-      solver.compute();
-    }
     std::cerr << solver.iterationStats() << std::endl;
 
     prev_pose_var  = curr_pose_var;
     prev_vel_var   = curr_vel_var;
     prev_bias_acc  = curr_bias_acc;
     prev_bias_gyro = curr_bias_gyro;
-
-    // solver compute
   }
 
   solver.setGraph(graph);

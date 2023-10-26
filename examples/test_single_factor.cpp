@@ -10,6 +10,9 @@
 #include "synthetic/synthetic.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 
+#include "imu_preintegrator/imu_preintegrator.h"
+#include "imu_preintegrator/imu_preintegrator_ukf.h"
+
 #include <type_traits>
 #include <typeinfo>
 
@@ -27,20 +30,22 @@ int main() {
   using namespace test_imu;
   using TrajectoryType = SE3EightTrajectory;
 
-  constexpr bool slim     = false;
-  using PreintegratorType = std::conditional<slim, ImuPreintegratorSlim, ImuPreintegrator>::type;
+  constexpr bool slim = true;
+  using PreintegratorType =
+    std::conditional<slim, ImuPreintegratorUKFSlim, ImuPreintegratorUKF>::type;
   using FactorType =
     std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
   solver.param_max_iterations.pushBack(100);
-  IterationAlgorithmBasePtr alg(new IterationAlgorithmDL);
-  solver.param_algorithm.setValue(alg);
+  IterationAlgorithmDL* alg(new IterationAlgorithmDL);
+  // alg->param_damping.setValue(1);
+  solver.param_algorithm.setValue(IterationAlgorithmBasePtr(alg));
   FactorGraphPtr graph(new FactorGraph);
 
-  float T    = 10;
-  float freq = 100;
+  float T    = 100;
+  float freq = 500;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
@@ -113,7 +118,7 @@ int main() {
   float dt = 1 / imu.freq();
   std::cout << "dt: " << dt << std::endl;
 
-  float dT = 3;
+  float dT = 10 * dt + dt / 2;
 
   Isometry3f initial_pose;
   ImuMeasurement meas;
@@ -139,14 +144,8 @@ int main() {
     integrator.preintegrate(meas, dt);
   }
 
-  std::cout << "SIMGNA: \n";
-  std::cout << integrator.sigma() << "\n";
-
-  std::cout << "dT: " << integrator.dT() << "\n";
   imu_factor->setMeasurement(integrator);
-  std::cout << "measurement set.\n";
   imu_factor->grav(Vector3f(0, 0, 0));
-  std::cout << "before compute\n";
 
   solver.compute();
   std::cout << "after compute\n";
