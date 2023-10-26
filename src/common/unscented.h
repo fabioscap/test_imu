@@ -6,6 +6,8 @@
 
 namespace test_imu {
 
+  enum class WeightScheme { UKF, HB };
+
   template <typename StateType>
   struct SigmaPoints {
     std::vector<StateType> points;
@@ -25,11 +27,15 @@ namespace test_imu {
                      const CovType<StateType>& cov,
                      SigmaPoints<StateType>& spoints);
 
+    // protected:
     // mysterious parameters
     float beta_  = 2.0f;
     float alpha_ = 2e-2;
     float k_     = 0;
 
+    WeightScheme weight_scheme_ = WeightScheme::UKF;
+
+    float cov_regularizer_ = 1e-10;
     /*   private:
         UnscentedTransform(); */
   };

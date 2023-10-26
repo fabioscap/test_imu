@@ -53,40 +53,41 @@ namespace test_imu {
     float& wmi   = spoints.wmi;
     float& wci   = spoints.wci;
 
+    points.clear();
     points.resize(2 * state_dim + 1);
 
     points[0] = mean;
 
     // mean weight
-    /* wm0 = lambda / (state_dim + lambda);
-    // covariance weight
-    wc0 = wm0 + (1 - alpha_ * alpha_ + beta_);
-    // weight i
-    wmi = 0.5 / (state_dim + lambda);
+    if (weight_scheme_ == WeightScheme::UKF) {
+      wm0 = lambda / (state_dim + lambda);
+      // covariance weight
+      wc0 = wm0 + (1 - alpha_ * alpha_ + beta_);
+      // weight i
+      wmi = 0.5 / Scalar(state_dim + lambda);
 
-    wci = 0.5 / (state_dim + lambda); */
-
-    /* hertzberg weights*/
-    wm0 = 1 / (2 * state_dim + 1);
-    wmi = wm0;
-    wc0 = 0.5;
-    wci = 0.5;
-
+      wci = 0.5 / Scalar(state_dim + lambda);
+    } else if (weight_scheme_ == WeightScheme::HB) {
+      /* hertzberg weights*/
+      wm0 = 1.0 / (2 * state_dim + 1);
+      wmi = wm0;
+      wc0 = 0.5;
+      wci = 0.5;
+    }
     /*       Eigen::JacobiSVD<Eigen::MatrixXf> svd(cov, Eigen::ComputeFullU |
        Eigen::ComputeFullV); Eigen::MatrixXf U = svd.matrixU(); Eigen::MatrixXf S =
        svd.singularValues(); CovType<StateType> L = U * std::sqrt((state_dim + lambda)) *
        S.cwiseSqrt().asDiagonal() * U.transpose(); */
 
-    float cov_regularizer = 1e-10;
-
+    float cov_scaling;
+    if (weight_scheme_ == WeightScheme::UKF) {
+      cov_scaling = (state_dim + lambda);
+    } else if (weight_scheme_ == WeightScheme::HB) {
+      cov_scaling = 1;
+    }
     // Perform Cholesky decomposition
-    // Eigen::LLT<CovType<StateType>> llt((state_dim + lambda) *
-    //                                   (cov + CovType<StateType>::Identity() * cov_regularizer));
-
-    // hertzberg weights
-    Eigen::LLT<CovType<StateType>> llt((cov + CovType<StateType>::Identity() * cov_regularizer));
-
-    // Eigen::LLT<CovType<StateType>> llt((cov + CovType<StateType>::Identity() * cov_regularizer));
+    Eigen::LLT<CovType<StateType>> llt(cov_scaling *
+                                       (cov + CovType<StateType>::Identity() * cov_regularizer_));
 
     if (!llt.info() == Eigen::Success)
       throw std::runtime_error("UnscentedTransform::toUnscented| Cholesky decomposition failed");
