@@ -47,6 +47,15 @@ namespace test_imu {
     TangentType boxminus(const ManifoldSO3& to) const;
   };
 
+  class ManifoldSO2 : public ManifoldBase_<Scalar, 1> {
+  public:
+    using BaseType = ManifoldBase_<Scalar, 1>;
+    ManifoldSO2();
+    ManifoldSO2(const DataType& data);
+    ManifoldSO2 boxplus(const TangentType& dsp) const;
+    TangentType boxminus(const ManifoldSO2& to) const;
+  };
+
   // specialization for Euclidean domains
   template <int dim>
   class Euclidean_ : public ManifoldBase_<TangentType_<dim>, dim> {

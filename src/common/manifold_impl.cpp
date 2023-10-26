@@ -32,6 +32,23 @@ namespace test_imu {
     return core::geometry3d::logMapSO3(R.eval());
   }
 
+  ManifoldSO2::ManifoldSO2() : BaseType(0.0) {
+  }
+  ManifoldSO2::ManifoldSO2(const DataType& data) : BaseType(data) {
+  }
+
+  ManifoldSO2 ManifoldSO2::boxplus(const TangentType& dsp) const {
+    Scalar s = std::sin(data() + dsp(0));
+    Scalar c = std::cos(data() + dsp(0));
+    return ManifoldSO2(std::atan2(s, c));
+  }
+
+  ManifoldSO2::TangentType ManifoldSO2::boxminus(const ManifoldSO2& to) const {
+    Scalar s = std::sin(to.data() - data());
+    Scalar c = std::cos(to.data() - data());
+    return TangentType(std::atan2(s, c));
+  }
+
   template <int dim>
   Euclidean_<dim> Euclidean_<dim>::boxplus(const TangentType& dsp) const {
     return Euclidean_(this->data_ + dsp);
