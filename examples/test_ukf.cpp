@@ -7,8 +7,8 @@
 #include <string.h>
 using namespace test_imu;
 
-using StateType = ManifoldSO2;
-using InputType = Euclidean_<1>;
+using StateType = ManifoldSO3;
+using InputType = Euclidean_<3>;
 using JointType = ManifoldComp_<StateType, InputType>;
 
 using CovType = UnscentedTransform::CovType<JointType>;
@@ -16,11 +16,8 @@ using CovType = UnscentedTransform::CovType<JointType>;
 JointType f(const JointType& x) {
   JointType x_next;
 
-  core::Matrix3_<Scalar> R  = Rz<Scalar>(x.get<0>().data());
-  core::Vector3_<Scalar> x_ = x.get<1>().data()(0) * core::Vector3_<Scalar>(1.0, 0.0, 0.0);
-  Scalar x_1_next           = (R * x_)(0);
   x_next.get<0>().setData(x.get<0>().data());
-  x_next.get<1>().setData(core::Vector1_<Scalar>(x_1_next));
+  x_next.get<1>().setData(x.get<0>().data() * x.get<1>().data());
   return x_next;
 }
 
@@ -34,10 +31,10 @@ bool string_in_array(const std::string& query, int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
   JointType s0;
-  CovType cov = CovType::Identity();
+  CovType cov = 0.5 * CovType::Identity();
 
-  s0.get<0>().setData(0.0);
-  s0.get<1>().setData(core::Vector1_<Scalar>(1.0));
+  s0.get<0>().setData(Ry<Scalar>(0.2));
+  s0.get<1>().setData(core::Vector3_<Scalar>(1.0, 0.0, 0.0));
 
   SigmaPoints<JointType> spoints;
 
@@ -50,7 +47,7 @@ int main(int argc, char* argv[]) {
     ut.weight_scheme_ = WeightScheme::HB;
   }
 
-  ut.alpha_           = 4e-2;
+  ut.alpha_           = 1e-3;
   ut.cov_regularizer_ = 0;
   ut.toUnscented(s0, cov, spoints);
 
@@ -88,4 +85,13 @@ int main(int argc, char* argv[]) {
             << "\n";
   std::cout << "sum cov weights: " << spoints.wc0 + (spoints.points.size() - 1) * spoints.wci
             << "\n";
+
+  std::cout << "compare with first order propagation\n";
+
+  CovType A;
+  A.block<3, 3>(0, 0) = core::Matrix3_<Scalar>::Identity();
+  A.block<3, 3>(3, 0) = -s0.get<0>().data() * core::geometry3d::skew(s0.get<1>().data());
+  A.block<3, 3>(3, 3) = s0.get<0>().data();
+
+  std::cout << A * cov * A.transpose() << "\n";
 }

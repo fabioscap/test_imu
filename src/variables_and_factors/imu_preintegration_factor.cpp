@@ -114,9 +114,9 @@ namespace srrg2_solver {
   void ImuPreintegrationFactorAD::_drawImpl(ViewerCanvasPtr canvas_) const {
     Vector3f coords[2];
     coords[0] =
-      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(0))->estimate().translation();
+      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
     coords[1] =
-      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(2))->estimate().translation();
+      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
 
     float lw = 0.5;
     if (fabs(variableId(0) - variableId(1)) == 1) {
@@ -137,9 +137,9 @@ namespace srrg2_solver {
   void ImuPreintegrationFactorSlimAD::_drawImpl(ViewerCanvasPtr canvas_) const {
     Vector3f coords[2];
     coords[0] =
-      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(0))->estimate().translation();
+      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
     coords[1] =
-      reinterpret_cast<const VariableSE3QuaternionRight*>(variable(2))->estimate().translation();
+      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
 
     float lw = 0.5;
     if (fabs(variableId(0) - variableId(1)) == 1) {

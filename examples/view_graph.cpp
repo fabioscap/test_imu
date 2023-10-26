@@ -6,12 +6,11 @@
 #include "srrg_solver/solver_core/solver.h"
 #include "srrg_solver/variables_and_factors/types_3d/all_types.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
+#include "variables_and_factors/variable_se3_expmap_right.h"
+
 #include <srrg_solver/solver_core/instances.h>
-#include <srrg_solver/solver_core/internals/linear_solvers/instances.h>
-#include <srrg_solver/solver_core/internals/linear_solvers/sparse_block_linear_solver_cholesky_csparse.h>
-#include <srrg_solver/variables_and_factors/types_2d/instances.h>
 #include <srrg_solver/variables_and_factors/types_3d/instances.h>
-#include <srrg_solver/variables_and_factors/types_projective/instances.h>
+
 // ia viewer stuff
 #include <srrg_qgl_viewport/viewer_core_shared_qgl.h>
 #include <srrg_solver/solver_core/factor_graph.h>
@@ -26,11 +25,7 @@ using namespace srrg2_solver;
 using namespace srrg2_qgl_viewport;
 
 void initTypes() {
-  variables_and_factors_2d_registerTypes();
   variables_and_factors_3d_registerTypes();
-  variables_and_factors_projective_registerTypes();
-  solver_registerTypes();
-  linear_solver_registerTypes();
   variables_and_factors_imu_registerTypes();
 }
 
@@ -79,7 +74,7 @@ void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
 
   std::string line;
 
-  VariableSE3QuaternionRightAD* prev_pose = new VariableSE3QuaternionRightAD();
+  VariableSE3ExpMapRightAD* prev_pose = new VariableSE3ExpMapRightAD();
 
   prev_pose->setGraphId(0);
   prev_pose->setStatus(VariableBase::Status::Fixed);
@@ -147,7 +142,7 @@ void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
       ++i;
       continue;
     }
-    VariableSE3QuaternionRightAD* new_pose = new VariableSE3QuaternionRightAD();
+    VariableSE3ExpMapRightAD* new_pose = new VariableSE3ExpMapRightAD();
     new_pose->setEstimate(pose);
     new_pose->setGraphId(++graph_id);
     new_pose->setStatus(VariableBase::Status::Fixed);

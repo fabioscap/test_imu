@@ -2,6 +2,7 @@
 #include <iostream>
 
 #define _USE_MATH_DEFINES
+#include "variables_and_factors/gps_factor_ad.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 #include "variables_and_factors/instances.h"
 
@@ -83,10 +84,10 @@ int main(int argc, char* argv[]) {
   solver.param_algorithm.setValue(alg);
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType = VariableSE3QuaternionRightAD;
+  using VarPoseImuType = VariableSE3ExpMapRightAD;
   using VarVelImuType  = VariableVector3AD;
   using ImuBiasVar     = VariableVector3AD;
-  using FactorGpsType  = GpsErrorFactorAD;
+  using FactorGpsType  = GpsFactorAD;
   using FactorBiasType = BiasErrorFactorAD;
 
   // initialization

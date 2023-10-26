@@ -71,8 +71,6 @@ namespace test_imu {
     delta_incr_.get<6>().setData(m.angular_vel.cast<Scalar>());
 
     UnscentedTransform ut;
-    ut.alpha_         = 2e-3;
-    ut.weight_scheme_ = WeightScheme::HB;
     ut.toUnscented(delta_incr_, sigma_joint_, spoints);
 
     // for each sigma points we do forward dynamics
@@ -168,11 +166,6 @@ namespace test_imu {
     delta_incr_.get<4>().setData(m.angular_vel.cast<Scalar>());
 
     UnscentedTransform ut;
-
-    ut.weight_scheme_   = WeightScheme::HB;
-    ut.cov_regularizer_ = 1e-9f;
-    ut.alpha_           = 5e-4;
-
     ut.toUnscented(delta_incr_, sigma_joint_, spoints);
 
     // for each sigma points we do forward dynamics

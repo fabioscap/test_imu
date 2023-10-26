@@ -35,6 +35,7 @@ int main() {
     std::conditional<slim, ImuPreintegratorUKFSlim, ImuPreintegratorUKF>::type;
   using FactorType =
     std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
+  using VariablePoseType = VariableSE3ExpMapRightAD;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
@@ -53,19 +54,19 @@ int main() {
   std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>> data;
   imu.generateData(data, false);
 
-  VariableSE3QuaternionRightAD *pose_start, *pose_end;
+  VariablePoseType *pose_start, *pose_end;
   VariableVector3AD *vel_start, *vel_end;
   VariableVector3AD *bias_acc_start, *bias_acc_end;
   VariableVector3AD *bias_gyro_start, *bias_gyro_end;
 
-  pose_start = new VariableSE3QuaternionRightAD();
+  pose_start = new VariablePoseType();
   vel_start  = new VariableVector3AD();
   if (!slim) {
     bias_acc_start  = new VariableVector3AD();
     bias_gyro_start = new VariableVector3AD();
   }
 
-  pose_end = new VariableSE3QuaternionRightAD();
+  pose_end = new VariablePoseType();
   vel_end  = new VariableVector3AD();
 
   if (!slim) {

@@ -7,9 +7,11 @@
 #include <srrg_solver/solver_core/ad_error_factor.h>
 #include <srrg_solver/solver_core/error_factor.h>
 
-#include <srrg_solver/variables_and_factors/types_3d/variable_se3.h>
-#include <srrg_solver/variables_and_factors/types_3d/variable_se3_ad.h>
+// #include <srrg_solver/variables_and_factors/types_3d/variable_se3.h>
+// #include <srrg_solver/variables_and_factors/types_3d/variable_se3_ad.h>
 #include <srrg_solver/variables_and_factors/types_common/all_types.h>
+
+#include "variable_se3_expmap_right.h"
 
 namespace srrg2_solver {
 
@@ -23,25 +25,25 @@ namespace srrg2_solver {
   };
 
   class ImuPreintegrationFactorAD : public ADErrorFactor_<15,
-                                                          VariableSE3QuaternionRightAD, // pose_from
-                                                          VariableVector3AD,            // vel_from
-                                                          VariableSE3QuaternionRightAD, // pose_to
-                                                          VariableVector3AD,            // vel_to
-                                                          VariableVector3AD,  // bias_acc_from
+                                                          VariableSE3ExpMapRightAD, // pose_from
+                                                          VariableVector3AD,        // vel_from
+                                                          VariableSE3ExpMapRightAD, // pose_to
+                                                          VariableVector3AD,        // vel_to
+                                                          VariableVector3AD,        // bias_acc_from
                                                           VariableVector3AD,  // bias_gyro_from
                                                           VariableVector3AD,  // bias_acc_to
                                                           VariableVector3AD>, // bias_gyro_to,
                                     public ImuPreintegrationFactorBase {
   public:
     using BaseType = ADErrorFactor_<15,
-                                    VariableSE3QuaternionRightAD, // pose_from
-                                    VariableVector3AD,            // vel_from
-                                    VariableSE3QuaternionRightAD, // pose_to
-                                    VariableVector3AD,            // vel_to
-                                    VariableVector3AD,            // bias_acc_from
-                                    VariableVector3AD,            // bias_gyro_from
-                                    VariableVector3AD,            // bias_acc_to
-                                    VariableVector3AD>;           // bias_gyro_to
+                                    VariableSE3ExpMapRightAD, // pose_from
+                                    VariableVector3AD,        // vel_from
+                                    VariableSE3ExpMapRightAD, // pose_to
+                                    VariableVector3AD,        // vel_to
+                                    VariableVector3AD,        // bias_acc_from
+                                    VariableVector3AD,        // bias_gyro_from
+                                    VariableVector3AD,        // bias_acc_to
+                                    VariableVector3AD>;       // bias_gyro_to
 
     using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
     using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
@@ -80,20 +82,19 @@ namespace srrg2_solver {
     dVector3f grav_;
   };
 
-  class ImuPreintegrationFactorSlimAD
-    : public ADErrorFactor_<9,
-                            VariableSE3QuaternionRightAD, // pose_from
-                            VariableVector3AD,            // vel_from
-                            VariableSE3QuaternionRightAD, // pose_to
-                            VariableVector3AD>,           // vel_to
+  class ImuPreintegrationFactorSlimAD : public ADErrorFactor_<9,
+                                                              VariableSE3ExpMapRightAD, // pose_from
+                                                              VariableVector3AD,        // vel_from
+                                                              VariableSE3ExpMapRightAD, // pose_to
+                                                              VariableVector3AD>,       // vel_to
 
-      public ImuPreintegrationFactorBase {
+                                        public ImuPreintegrationFactorBase {
   public:
     using BaseType = ADErrorFactor_<9,
-                                    VariableSE3QuaternionRightAD, // pose_from
-                                    VariableVector3AD,            // vel_from
-                                    VariableSE3QuaternionRightAD, // pose_to
-                                    VariableVector3AD>;           // vel_to
+                                    VariableSE3ExpMapRightAD, // pose_from
+                                    VariableVector3AD,        // vel_from
+                                    VariableSE3ExpMapRightAD, // pose_to
+                                    VariableVector3AD>;       // vel_to
 
     using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
     using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
