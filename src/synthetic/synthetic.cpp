@@ -42,7 +42,7 @@ void SE3EightTrajectory::sampleTrajectory(float t,
                     0);
 }
 
-const float r = 10.0;
+const float r = 30.0;
 void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
                                                      core::Vector3f& pos,
                                                      core::Vector3f& vel,
@@ -176,7 +176,6 @@ void test_imu::FakeImu::generateData(
   Vector3f bg_ = 1e-8 * Vector3f::Ones();
 
   std::normal_distribution<double> std_dist(0.0, 1.0);
-  std::uniform_real_distribution<double> uni_dist(-1.0, 1.0);
 
   float t = 0;
   for (int i = 0; i < num; ++i, t += dt) {
@@ -185,15 +184,14 @@ void test_imu::FakeImu::generateData(
     Vector3f& vel        = std::get<1>(data.at(i));
     trajectory_->getPoseMeasurement(t, pose, vel, meas);
     // noise
-    // bias is assumed constant between keyframes in 2015 paper (TODO)
+    // maybe bugged
     if (noise) {
-      ba_ += noise_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
-      bg_ +=
-        noise_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      ba_ += std_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      bg_ += std_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.acceleration +=
-        ba_ + noise_acc_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
+        ba_ + std_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.angular_vel +=
-        bg_ + noise_gyro_ * Vector3f(uni_dist(rnd_gen_), uni_dist(rnd_gen_), uni_dist(rnd_gen_));
+        bg_ + std_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
     }
   }
 }

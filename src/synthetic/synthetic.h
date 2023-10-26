@@ -110,13 +110,26 @@ namespace test_imu {
       bg_ = bg;
     }
 
+    inline float& std_acc() {
+      return std_acc_;
+    }
+    inline float& std_gyro() {
+      return std_gyro_;
+    }
+    inline float& std_bias_acc() {
+      return std_bias_acc_;
+    }
+    inline float& std_bias_gyro() {
+      return std_bias_gyro_;
+    }
+
   protected:
     float freq_; // the frequency at which a new measurement becomes available
 
-    const float noise_acc_       = 0.00175f;
-    const float noise_gyro_      = 0.00175f;
-    const float noise_bias_acc_  = 0.00167f;
-    const float noise_bias_gyro_ = 0.00167f;
+    float std_acc_       = 0.00175f;
+    float std_gyro_      = 0.00175f;
+    float std_bias_acc_  = 0.00167f;
+    float std_bias_gyro_ = 0.00167f;
 
     std::shared_ptr<SE3PlanarTrajectory> trajectory_;
     std::mt19937 rnd_gen_;
