@@ -25,12 +25,6 @@ namespace test_imu {
     inline const CovType& sigma() const {return sigma_;}
     // clang-format on
 
-    // DEBUG function
-    void getPrediction(const core::Isometry3f& Ti,
-                       const core::Vector3f& vi,
-                       core::Isometry3f& Tf,
-                       core::Vector3f& vf);
-
     // protected:
     Vector3 delta_p_ = Vector3::Zero();
     Matrix3 delta_R_ = Matrix3::Identity();
@@ -66,12 +60,6 @@ namespace test_imu {
     inline const core::Vector3f delta_v() const override {return delta_v_.cast<float>();}
     inline const CovType& sigma() const {return sigma_;}
     // clang-format on
-
-    // DEBUG function
-    void getPrediction(const core::Isometry3f& Ti,
-                       const core::Vector3f& vi,
-                       core::Isometry3f& Tf,
-                       core::Vector3f& vf);
 
   protected:
     Vector3 delta_p_ = Vector3::Zero();

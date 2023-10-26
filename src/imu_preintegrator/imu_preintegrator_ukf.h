@@ -61,4 +61,47 @@ namespace test_imu {
     SigmaPoints<DeltaManifold> spoints;
   };
 
+  class ImuPreintegratorUKFSlim : public ImuPreintegratorBase {
+  public:
+    using CovType      = ImuPreintegratorBase::CovType;
+    using CovNoiseType = ImuPreintegratorBase::CovNoiseType;
+
+    using Vector3 = ImuPreintegratorBase::Vector3;
+    using Matrix3 = ImuPreintegratorBase::Matrix3;
+
+    static constexpr int state_dim = 9;
+    static constexpr int input_dim = 6;
+    static constexpr int noise_dim = 6;
+
+    using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
+
+    void preintegrate(const ImuMeasurement& m, Scalar dt) override;
+    // allocates a new imu measurement
+    void reset() override;
+    // clang-format off
+    const core::Matrix3f delta_R() const override;
+    const core::Vector3f delta_p() const override;
+    const core::Vector3f delta_v() const override;
+    inline const CovType& sigma() const override {
+      // sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
+      return sigma_;}
+    // clang-format on
+
+    using DeltaManifold = ManifoldComp_<ManifoldSO3,   // dR
+                                        Euclidean_<3>, // dv
+                                        Euclidean_<3>, // dp
+                                        Euclidean_<3>, // input acceleration
+                                        Euclidean_<3>  // input gyroscope
+                                        >;
+
+    // protected:
+    DeltaManifold delta_incr_;
+
+    // UKF: preallocate sigma joint input and state
+    CovJType sigma_joint_ = 1e-9 * CovJType::Identity();
+
+    // container for sigma points
+    SigmaPoints<DeltaManifold> spoints;
+  };
+
 } // namespace test_imu

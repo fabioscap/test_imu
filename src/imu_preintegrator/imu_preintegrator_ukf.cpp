@@ -71,7 +71,8 @@ namespace test_imu {
     delta_incr_.get<6>().setData(m.angular_vel.cast<Scalar>());
 
     UnscentedTransform ut;
-    ut.alpha_ = 2e-3;
+    ut.alpha_         = 2e-3;
+    ut.weight_scheme_ = WeightScheme::HB;
     ut.toUnscented(delta_incr_, sigma_joint_, spoints);
 
     // for each sigma points we do forward dynamics
@@ -122,18 +123,96 @@ namespace test_imu {
     delta_incr_ = DeltaManifold();
   }
 
-  void ImuPreintegratorUKF::getPrediction(const core::Isometry3f& Ti,
-                                          const core::Vector3f& vi,
-                                          core::Isometry3f& Tf,
-                                          core::Vector3f& vf) {
-    Tf.setIdentity();
+  const core::Matrix3f ImuPreintegratorUKFSlim::delta_R() const {
+    return delta_incr_.get<0>().data().cast<float>();
+  }
+  const core::Vector3f ImuPreintegratorUKFSlim::delta_p() const {
+    return delta_incr_.get<2>().data().cast<float>();
+  }
+  const core::Vector3f ImuPreintegratorUKFSlim::delta_v() const {
+    return delta_incr_.get<1>().data().cast<float>();
+  }
 
-    float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
+  void ImuPreintegratorUKFSlim::preintegrate(const ImuMeasurement& m, Scalar dt) {
+    measurements_.push_back(m);
 
-    vf = Ti.linear() * delta_v() + vi;
+    // UKF: alias variables
+    const Matrix3& deltaR = delta_incr_.get<0>().data();
+    const Vector3& deltaV = delta_incr_.get<1>().data();
+    const Vector3& deltaP = delta_incr_.get<2>().data();
 
-    Tf.linear()      = Ti.linear() * delta_R();
-    Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
+    // correct the measurements
+    Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+    Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
+
+    // auxiliary variables
+    Vector3 dtheta = ang_vel_c * dt;
+    auto acc_skew  = core::geometry3d::skew(acc_c);
+    auto dR        = core::geometry3d::expMapSO3(dtheta);
+    core::fixRotation(dR);
+    auto Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
+
+    scaling_.setIdentity(); // necessary?
+    // it can also be precomputed if dt is constant
+    scaling_.block<3, 3>(NGidx, NGidx) = Matrix3::Identity() / dt;
+    scaling_.block<3, 3>(NAidx, NAidx) = Matrix3::Identity() / dt;
+
+    /* estimate updates */
+    sigma_joint_.setZero();
+    sigma_joint_.block<state_dim, state_dim>(0, 0) = sigma_;
+    sigma_joint_.block<input_dim, input_dim>(state_dim, state_dim) =
+      (scaling_ * sigma_noise_).block<input_dim, input_dim>(0, 0);
+
+    // UKF: set input mean
+    delta_incr_.get<3>().setData(m.acceleration.cast<Scalar>());
+    delta_incr_.get<4>().setData(m.angular_vel.cast<Scalar>());
+
+    UnscentedTransform ut;
+
+    ut.weight_scheme_   = WeightScheme::HB;
+    ut.cov_regularizer_ = 1e-9f;
+    ut.alpha_           = 5e-4;
+
+    ut.toUnscented(delta_incr_, sigma_joint_, spoints);
+
+    // for each sigma points we do forward dynamics
+    for (size_t i = 0; i < spoints.points.size(); ++i) {
+      DeltaManifold& point           = spoints.points.at(i);
+      const Matrix3& deltaR          = point.get<0>().data();
+      const Vector3& deltaV          = point.get<1>().data();
+      const Vector3& deltaP          = point.get<2>().data();
+      const Vector3& acc_noisy_meas  = point.get<3>().data();
+      const Vector3& gyro_noisy_meas = point.get<4>().data();
+
+      auto acc_c     = acc_noisy_meas - bias_acc_;
+      auto ang_vel_c = gyro_noisy_meas - bias_gyro_;
+
+      // auxiliary variables
+      Vector3 dtheta = ang_vel_c * dt;
+      auto dR        = core::geometry3d::expMapSO3(dtheta);
+
+      auto dva = deltaR * (acc_c) *dt;
+      point.get<2>().setData(deltaP + (deltaV + 0.5 * dva) * dt);
+
+      point.get<1>().setData(deltaV + dva);
+
+      Matrix3 temp = deltaR * dR;
+      core::fixRotation(temp);
+      point.get<0>().setData(temp.eval());
+    }
+
+    // go back to normal parametrization
+    ut.toMeanCov(spoints, delta_incr_, sigma_joint_);
+
+    sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
+
+    dT_ += dt;
+  }
+
+  void ImuPreintegratorUKFSlim::reset() {
+    ImuPreintegratorBase::reset();
+
+    delta_incr_ = DeltaManifold();
   }
 
 } // namespace test_imu

@@ -73,6 +73,11 @@ namespace test_imu {
       bias_gyro_ = v.cast<Scalar>();
     }
 
+    void getPrediction(const core::Isometry3f& Ti,
+                       const core::Vector3f& vi,
+                       core::Isometry3f& Tf,
+                       core::Vector3f& vf);
+
   protected:
     std::vector<ImuMeasurement> measurements_;
 

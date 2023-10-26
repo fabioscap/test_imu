@@ -33,4 +33,17 @@ namespace test_imu {
     sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.cast<Scalar>().asDiagonal();
   }
 
+  void ImuPreintegratorBase::getPrediction(const core::Isometry3f& Ti,
+                                           const core::Vector3f& vi,
+                                           core::Isometry3f& Tf,
+                                           core::Vector3f& vf) {
+    Tf.setIdentity();
+
+    float T = measurements_.back().timestamp - measurements_.at(0).timestamp;
+
+    vf = Ti.linear() * delta_v() + vi;
+
+    Tf.linear()      = Ti.linear() * delta_R();
+    Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
+  }
 } // namespace test_imu
