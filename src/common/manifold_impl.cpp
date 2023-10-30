@@ -122,4 +122,27 @@ namespace test_imu {
     else
       return rest_.template get<N - 1>();
   }
+
+  template <typename DataType, int dim>
+  std::ostream& operator<<(std::ostream& os, const ManifoldBase_<DataType, dim>& m) {
+    os << m.data();
+    return os;
+  }
+
+  template <typename Manifold, typename... Rest>
+  std::ostream& operator<<(std::ostream& os, const ManifoldComp_<Manifold, Rest...>& m) {
+    os << m.template get<0>();
+    os << "\n";
+
+    // recursive call
+    os << m.rest();
+
+    return os;
+  }
+
+  template <typename Manifold>
+  std::ostream& operator<<(std::ostream& os, const ManifoldComp_<Manifold>& m) {
+    os << m.template get<0>();
+    return os;
+  }
 } // namespace test_imu

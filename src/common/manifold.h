@@ -120,9 +120,19 @@ namespace test_imu {
     template <size_t N>
     const auto& get() const;
 
+    inline const ManifoldComp_<Rest...>& rest() const {
+      return rest_;
+    }
+
   protected:
     Manifold manifold_;
     ManifoldComp_<Rest...> rest_;
   };
 
+  template <typename DataType, int dim>
+  std::ostream& operator<<(std::ostream&, const ManifoldBase_<DataType, dim>&);
+  template <typename Manifold, typename... Rest>
+  std::ostream& operator<<(std::ostream&, const ManifoldComp_<Manifold, Rest...>&);
+  template <typename Manifold>
+  std::ostream& operator<<(std::ostream&, const ManifoldComp_<Manifold>&);
 } // namespace test_imu

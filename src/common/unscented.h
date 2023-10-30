@@ -20,12 +20,25 @@ namespace test_imu {
     using CovType = core::MatrixN_<Scalar, StateType::dim>;
 
     template <typename StateType>
-    void toMeanCov(const SigmaPoints<StateType>& spoints, StateType& mean, CovType<StateType>& cov);
+    void toMeanCov(const SigmaPoints<StateType>& spoints,
+                   StateType& mean,
+                   CovType<StateType>& cov) const;
 
     template <typename StateType>
     void toUnscented(const StateType& mean,
                      const CovType<StateType>& cov,
-                     SigmaPoints<StateType>& spoints);
+                     SigmaPoints<StateType>& spoints) const;
+
+    // for square root UKF (van der Merwe), keep covariance in square root form
+    template <typename StateType>
+    void toMeanSqrtCov(const SigmaPoints<StateType>& spoints,
+                       const CovType<StateType>& process_noise_cov_sqrt,
+                       StateType& mean,
+                       CovType<StateType>& cov_sqrt) const;
+    template <typename StateType>
+    void toSqrtUnscented(const StateType& mean,
+                         const CovType<StateType>& cov_sqrt,
+                         SigmaPoints<StateType>& spoints) const;
 
     // protected:
     // mysterious parameters
@@ -36,8 +49,18 @@ namespace test_imu {
     WeightScheme weight_scheme_ = WeightScheme::UKF;
 
     float cov_regularizer_ = 1e-10;
-    /*   private:
-        UnscentedTransform(); */
+
+  private:
+    template <typename StateType>
+    void compute_weights_scaling(SigmaPoints<StateType>& spoints, float& cov_scaling) const;
+    template <typename StateType>
+    void compute_sigma_points(const StateType& mean,
+                              const CovType<StateType>& L_scaled,
+                              SigmaPoints<StateType>& spoints) const;
+    template <typename StateType>
+    void compute_mean_sigma_points(const SigmaPoints<StateType>& spoints,
+                                   StateType& mean,
+                                   const size_t n_iters = 10) const;
   };
 
 } // namespace test_imu
