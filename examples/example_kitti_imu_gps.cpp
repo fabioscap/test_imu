@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
   // prev_pose_var->setStatus(VariableBase::Status::Fixed);
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
-  float sigma_gps = 0.001;
+  float sigma_gps = 0.1;
   float info_gps  = 1 / (sigma_gps * sigma_gps);
   gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
   gps_factor->setMeasurement(init_gps_pose);
@@ -179,6 +179,7 @@ int main(int argc, char* argv[]) {
   for (size_t i = 1; i < gps_measurements.size(); ++i) {
     const double t_previous = gps_measurements.at(i - 1).time;
     const double gps_time   = gps_measurements.at(i).time;
+    const double dT         = gps_time - t_previous;
 
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
@@ -258,7 +259,12 @@ int main(int argc, char* argv[]) {
 
       bias_factor->setVariableId(2, curr_bias_acc->graphId());
       bias_factor->setVariableId(3, curr_bias_gyro->graphId());
-
+      Matrix6f bias_sigma = Matrix6f::Identity();
+      bias_sigma.block<3, 3>(0, 0) *= dT * kitti_calibration.accelerometer_bias_sigma *
+                                      kitti_calibration.accelerometer_bias_sigma;
+      bias_sigma.block<3, 3>(3, 3) *=
+        dT * kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma;
+      bias_factor->setInformationMatrix(bias_sigma.inverse());
       imu_factor->setMeasurement(*imu_preintegrator);
       if (use_imu) {
         graph->addFactor(FactorBasePtr(bias_factor));

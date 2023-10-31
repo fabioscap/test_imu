@@ -53,9 +53,9 @@ namespace test_imu {
   }
 
   template <typename StateType>
-  void UnscentedTransform::compute_mean_sigma_points(const SigmaPoints<StateType>& spoints,
-                                                     StateType& mean,
-                                                     const size_t n_iters) const {
+  void UnscentedTransform::mean_from_sigma_points(const SigmaPoints<StateType>& spoints,
+                                                  StateType& mean,
+                                                  const size_t n_iters) const {
     using TangentType  = typename StateType::TangentType;
     const auto& points = spoints.points;
     const float wm0    = spoints.wm0;
@@ -84,12 +84,12 @@ namespace test_imu {
     const auto& points = spoints.points;
     const float wc0    = spoints.wc0;
     const float wci    = spoints.wci;
-    compute_mean_sigma_points(spoints, mean);
+    mean_from_sigma_points(spoints, mean, 0);
 
     // covariance lives in tangent space
     cov.setZero();
     TangentType err = mean.boxminus(points.at(0));
-    cov += wc0 * err * err.transpose();
+    // cov += wc0 * err * err.transpose();
 
     for (size_t i = 1; i < points.size(); ++i) {
       err = mean.boxminus(points.at(i));
@@ -112,13 +112,14 @@ namespace test_imu {
 
     compute_weights_scaling(spoints, cov_scaling);
     // Perform Cholesky decomposition
+    // TODO use selfAdjointView where it is possible
     Eigen::LLT<CovType<StateType>> llt(cov_scaling *
                                        (cov + CovType<StateType>::Identity() * cov_regularizer_));
 
     if (!llt.info() == Eigen::Success)
       throw std::runtime_error("UnscentedTransform::toUnscented| Cholesky decomposition failed");
 
-    CovType<StateType> L = llt.matrixL();
+    const CovType<StateType>& L = llt.matrixL();
     compute_sigma_points(mean, L, spoints);
   }
 
@@ -132,7 +133,7 @@ namespace test_imu {
     const float wc0         = spoints.wc0;
     const float wci         = spoints.wci;
 
-    compute_mean_sigma_points(spoints, mean);
+    mean_from_sigma_points(spoints, mean, 0);
 
     // QR
 
@@ -169,6 +170,6 @@ namespace test_imu {
     float cov_scaling;
 
     compute_weights_scaling(spoints, cov_scaling);
-    compute_sigma_points(mean, cov_scaling * cov_sqrt);
+    compute_sigma_points(mean, static_cast<CovType<StateType>>(cov_scaling * cov_sqrt), spoints);
   }
 } // namespace test_imu

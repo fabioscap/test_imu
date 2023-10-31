@@ -162,6 +162,7 @@ int main(int argc, char* argv[]) {
   for (size_t i = 1; i < gps_measurements.size(); ++i) {
     const double t_previous = gps_measurements.at(i - 1).time;
     const double gps_time   = gps_measurements.at(i).time;
+    const double dT         = gps_time - t_previous;
 
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
@@ -239,6 +240,10 @@ int main(int argc, char* argv[]) {
 
       bias_factor->setVariableId(2, curr_bias_acc->graphId());
       bias_factor->setVariableId(3, curr_bias_gyro->graphId());
+      Matrix6f bias_sigma = Matrix6f::Identity();
+      bias_sigma.block<3, 3>(0, 0) *= dT * sigmas.bias_acc * sigmas.bias_acc;
+      bias_sigma.block<3, 3>(3, 3) *= dT * sigmas.bias_gyro * sigmas.bias_gyro;
+      bias_factor->setInformationMatrix(bias_sigma.inverse());
 
       imu_factor->setMeasurement(*imu_preintegrator);
       if (use_imu) {
@@ -328,7 +333,7 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
   imu.std_bias_gyro() = sigmas.bias_gyro;
 
   std::vector<std::tuple<test_imu::ImuMeasurement, Vector3f, Isometry3f>> data;
-  imu.generateData(data, false);
+  imu.generateData(data, true);
 
   std::random_device rd;
   std::mt19937 gen(rd());

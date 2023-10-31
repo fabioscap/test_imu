@@ -16,8 +16,8 @@ using CovType = UnscentedTransform::CovType<JointType>;
 JointType f(const JointType& x) {
   JointType x_next;
 
-  x_next.get<0>().setData(x.get<0>().data());
-  x_next.get<1>().setData(x.get<0>().data() * x.get<1>().data());
+  x_next.get<0>().setData(x.get<0>().data() * Rz<Scalar>(0.3));
+  x_next.get<1>().setData(2 * x.get<1>().data() + core::Vector3_<Scalar>(10, -10, 10));
   // x_next.get<1>().setData(x.get<1>().data());
 
   return x_next;
@@ -61,6 +61,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "s0\n";
   std::cout << s0 << "\n";
+  std::cout << cov_rec << "\n";
 
   std::cout << "wm0: " << spoints.wm0 << "\n";
   std::cout << "wc0: " << spoints.wc0 << "\n";
@@ -76,6 +77,11 @@ int main(int argc, char* argv[]) {
   CovType square_root_process_cov = 0.000000001 * CovType::Identity();
 
   ut.toUnscented(s0, cov, spoints);
+
+  std::cout << "\n-applying f-\n\n";
+  for (size_t i = 0; i < spoints.points.size(); ++i) {
+    spoints.points.at(i) = f(spoints.points.at(i));
+  }
 
   JointType x;
   CovType L;

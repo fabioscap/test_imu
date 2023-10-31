@@ -43,7 +43,7 @@ namespace test_imu {
     // protected:
     // mysterious parameters
     float beta_  = 2.0f;
-    float alpha_ = 2e-2;
+    float alpha_ = 1e-3;
     float k_     = 0;
 
     WeightScheme weight_scheme_ = WeightScheme::UKF;
@@ -58,9 +58,9 @@ namespace test_imu {
                               const CovType<StateType>& L_scaled,
                               SigmaPoints<StateType>& spoints) const;
     template <typename StateType>
-    void compute_mean_sigma_points(const SigmaPoints<StateType>& spoints,
-                                   StateType& mean,
-                                   const size_t n_iters = 10) const;
+    void mean_from_sigma_points(const SigmaPoints<StateType>& spoints,
+                                StateType& mean,
+                                const size_t n_iters = 10) const;
   };
 
 } // namespace test_imu

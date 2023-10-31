@@ -17,24 +17,31 @@
 #include <typeinfo>
 
 #include <fstream>
+#include <string.h>
 
 template <typename Scalar>
 void dumpCov(const Eigen::Matrix<Scalar, -1, -1>& cov);
 
+bool string_in_array(const std::string& query, int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == query)
+      return true;
+
+  return false;
+}
+
 // create two variables and a preintegration factor between them
 // then fix the first one and see if the second is optimized
 // to see if ADErrorFactor() is implemented correctly
-int main() {
+int main(int argc, char* argv[]) {
+  bool use_ukf = string_in_array("ukf", argc, argv);
+  bool slim    = string_in_array("slim", argc, argv);
+
   using namespace srrg2_core;
   using namespace srrg2_solver;
   using namespace test_imu;
   using TrajectoryType = SE3EightTrajectory;
 
-  constexpr bool slim = true;
-  using PreintegratorType =
-    std::conditional<slim, ImuPreintegratorUKFSlim, ImuPreintegratorUKF>::type;
-  using FactorType =
-    std::conditional<slim, ImuPreintegrationFactorSlimAD, ImuPreintegrationFactorAD>::type;
   using VariablePoseType = VariableSE3ExpMapRightAD;
 
   Solver solver;
@@ -94,28 +101,27 @@ int main() {
     graph->addVariable(VariableBasePtr(bias_gyro_end));
   }
 
-  FactorType* imu_factor = new FactorType();
-  imu_factor->setGraphId(0);
-
-  imu_factor->setVariableId(0, pose_start->graphId());
-  imu_factor->setVariableId(1, vel_start->graphId());
-  imu_factor->setVariableId(2, pose_end->graphId());
-  imu_factor->setVariableId(3, vel_end->graphId());
-  if (!slim) {
-    imu_factor->setVariableId(4, bias_acc_start->graphId());
-    imu_factor->setVariableId(5, bias_gyro_start->graphId());
-    imu_factor->setVariableId(6, bias_acc_end->graphId());
-    imu_factor->setVariableId(7, bias_gyro_end->graphId());
-  }
-
-  graph->addFactor(FactorBasePtr(imu_factor));
-
-  solver.setGraph(graph);
-
   // imu preintegration
-  PreintegratorType* integrator_ptr = new PreintegratorType();
-  PreintegratorType& integrator     = *integrator_ptr;
-  integrator.reset();
+  test_imu::ImuPreintegratorBase* integrator;
+  if (slim) {
+    std::cout << "slim ";
+    if (use_ukf) {
+      std::cout << "ukf\n";
+      integrator = new test_imu::ImuPreintegratorUKFSlim();
+    } else {
+      std::cout << "normal\n";
+      integrator = new test_imu::ImuPreintegratorSlim();
+    }
+  } else {
+    std::cout << "full ";
+    if (use_ukf) {
+      std::cout << "ukf\n";
+      integrator = new test_imu::ImuPreintegratorUKF();
+    } else {
+      std::cout << "normal\n";
+      integrator = new test_imu::ImuPreintegrator();
+    }
+  }
   float dt = 1 / imu.freq();
   std::cout << "dt: " << dt << std::endl;
 
@@ -128,7 +134,7 @@ int main() {
     if (i == 0) {
       initial_pose = std::get<2>(data.at(i));
       meas         = std::get<0>(data.at(i));
-      integrator.preintegrate(meas, dt);
+      integrator->preintegrate(meas, dt);
       pose_start->setEstimate(initial_pose);
       vel_start->setEstimate(std::get<1>(data.at(i)));
       if (!slim) {
@@ -142,29 +148,51 @@ int main() {
 
     if (meas.timestamp > dT)
       break;
-    integrator.preintegrate(meas, dt);
+    integrator->preintegrate(meas, dt);
   }
 
-  imu_factor->setMeasurement(integrator);
-  imu_factor->grav(Vector3f(0, 0, 0));
+  if (!slim) {
+    ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
+    imu_factor->grav(Vector3f(0, 0, 0));
+    imu_factor->setVariableId(0, pose_start->graphId());
+    imu_factor->setVariableId(1, vel_start->graphId());
+    imu_factor->setVariableId(2, pose_end->graphId());
+    imu_factor->setVariableId(3, vel_end->graphId());
 
+    imu_factor->setVariableId(4, bias_acc_start->graphId());
+    imu_factor->setVariableId(5, bias_gyro_start->graphId());
+
+    imu_factor->setVariableId(6, bias_acc_end->graphId());
+    imu_factor->setVariableId(7, bias_gyro_end->graphId());
+    imu_factor->setMeasurement(*integrator);
+    graph->addFactor(FactorBasePtr(imu_factor));
+
+  } else {
+    ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
+    imu_factor->grav(Vector3f(0, 0, 0));
+    imu_factor->setVariableId(0, pose_start->graphId());
+    imu_factor->setVariableId(1, vel_start->graphId());
+    imu_factor->setVariableId(2, pose_end->graphId());
+    imu_factor->setVariableId(3, vel_end->graphId());
+    imu_factor->setMeasurement(*integrator);
+    graph->addFactor(FactorBasePtr(imu_factor));
+  }
+  solver.setGraph(graph);
   solver.compute();
   std::cout << "after compute\n";
   std::cerr << solver.iterationStats() << std::endl;
 
-  std::cout << "sigma:\n" << integrator.sigma() << "\n";
-  std::cout << "sigma determinant: " << integrator.sigma().determinant() << "\n";
-  std::cout << "omega: \n" << imu_factor->informationMatrix() << "\n";
-  std::cout << "omega determinant: \n" << imu_factor->informationMatrix().determinant() << "\n";
+  std::cout << "sigma:\n" << integrator->sigma() << "\n";
+  std::cout << "sigma determinant: " << integrator->sigma().determinant() << "\n";
 
   if (!slim) {
     std::cout << "sigma gay determinant:\n"
-              << integrator.sigma().block<9, 9>(0, 0).determinant() << "\n";
+              << integrator->sigma().block<9, 9>(0, 0).determinant() << "\n";
   }
   std::cout << "gt:\n" << std::get<2>(data.at(i)).matrix() << "\n";
 
-  std::cout << "preintegrated measurements:\n " << integrator.delta_R() << "\n"
-            << integrator.delta_p() << "\n";
+  std::cout << "preintegrated measurements:\n " << integrator->delta_R() << "\n"
+            << integrator->delta_p() << "\n";
 
   std::cout << "estimate:\n" << pose_end->estimate().matrix() << "\n";
 
@@ -173,7 +201,7 @@ int main() {
                                           pose_end->estimate().matrix()))
             << "\n";
 
-  dumpCov(integrator.sigma());
+  dumpCov(integrator->sigma());
 
   return 0;
 }
