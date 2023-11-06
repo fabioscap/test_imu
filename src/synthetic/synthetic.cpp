@@ -59,6 +59,23 @@ void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
   acc << scaling * scaling * r * Vector3f(-ctheta, -stheta, 0.0);
 }
 
+const float A = 3;
+void test_imu::SE3SineTrajectory::sampleTrajectory(float t,
+                                                   core::Vector3f& pos,
+                                                   core::Vector3f& vel,
+                                                   core::Vector3f& acc) const {
+  using namespace core;
+  float scaling = (2 * M_PI / T_);
+  float theta   = t * scaling;
+
+  float stheta = std::sin(theta);
+  float ctheta = std::cos(theta);
+
+  pos << Vector3f(t, A * stheta, 0.0);
+  vel << Vector3f(1, scaling * A * ctheta, 0.0);
+  acc << Vector3f(0.0, -scaling * scaling * A * stheta, 0.0);
+}
+
 const float l     = 10;
 const float theta = 0;
 const float v0    = 0.1;
@@ -91,6 +108,7 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
                                              core::Vector3f& vel,
                                              ImuMeasurement& measurement) {
   using namespace core;
+
   pose.setIdentity();
 
   Vector3f pos, acc;
@@ -120,7 +138,6 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
 
   pose.linear() = rotation;
 
-  // Measurement
   // linear acceleration in moving frame
   const Matrix3f& R        = pose.rotation();
   measurement.acceleration = R.transpose() * acc;
@@ -137,28 +154,6 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
   // expecting only wz != 0
   measurement.angular_vel << 0, 0, (vel(0) * acc(1) - vel(1) * acc(0)) / (v_norm * v_norm);
   measurement.timestamp = t;
-
-  // trasformazioneee
-
-  // pose
-  core::Isometry3f tf;
-  tf.setIdentity();
-  tf.linear()      = R_;
-  tf.translation() = t_;
-
-  core::Isometry3f tf_b;
-  tf_b.setIdentity();
-  tf_b.linear() = R_b_;
-
-  pose.linear() = pose.linear() * R_b_;
-
-  pose = tf * pose;
-
-  vel = R_ * vel;
-
-  // measurements
-  measurement.angular_vel  = R_b_.transpose() * measurement.angular_vel;
-  measurement.acceleration = R_b_.transpose() * measurement.acceleration;
 }
 
 void test_imu::FakeImu::generateData(
@@ -186,8 +181,9 @@ void test_imu::FakeImu::generateData(
     // noise
     // maybe bugged
     if (noise) {
-      ba_ += std_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
-      bg_ += std_bias_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
+      // ba_ += std_bias_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_),
+      // std_dist(rnd_gen_)); bg_ += std_bias_gyro_ * Vector3f(std_dist(rnd_gen_),
+      // std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.acceleration +=
         ba_ + std_acc_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
       meas.angular_vel +=

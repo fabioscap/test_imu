@@ -37,15 +37,18 @@ namespace test_imu {
 
   protected:
     float T_; // The duration of the trajectory
-
-    // trajectory transformation parameters
-    core::Matrix3f R_ = Rx(0.0f);
-    core::Vector3f t_ = core::Vector3f(0, 0, 0);
-
-    // body frame transformation parameters
-    core::Matrix3f R_b_ = Ry(0.0f);
   };
 
+  class SE3SineTrajectory : public SE3PlanarTrajectory {
+  public:
+    SE3SineTrajectory(float T) : SE3PlanarTrajectory(T) {
+    }
+
+    void sampleTrajectory(float t,
+                          core::Vector3f& pos,
+                          core::Vector3f& vel,
+                          core::Vector3f& acc) const override;
+  };
   class SE3EightTrajectory : public SE3PlanarTrajectory {
   public:
     SE3EightTrajectory(float T) : SE3PlanarTrajectory(T) {
