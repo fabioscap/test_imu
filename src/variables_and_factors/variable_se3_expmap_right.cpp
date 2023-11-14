@@ -15,9 +15,9 @@ namespace srrg2_solver {
 
     auto dR = geometry3d::expMapSO3(static_cast<Vector3_<DualType>>(dr));
 
-    _ad_estimate.linear() *= dR;
-
     _ad_estimate.translation() += _ad_estimate.linear() * dp;
+
+    _ad_estimate.linear() *= dR;
   }
 
   INSTANTIATE(VariableSE3ExpMapRight)
