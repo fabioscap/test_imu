@@ -16,8 +16,8 @@ using CovType = UnscentedTransform::CovType<JointType>;
 JointType f(const JointType& x) {
   JointType x_next;
 
-  x_next.get<0>().setData(x.get<0>().data() * Rz<Scalar>(0.3));
-  x_next.get<1>().setData(2 * x.get<1>().data() + core::Vector3_<Scalar>(10, -10, 10));
+  x_next.get<0>().setData(x.get<0>().data());
+  x_next.get<1>().setData(x.get<0>().data() * x.get<1>().data());
   // x_next.get<1>().setData(x.get<1>().data());
 
   return x_next;
@@ -35,8 +35,8 @@ int main(int argc, char* argv[]) {
   JointType s0;
   CovType cov = 0.05 * CovType::Identity();
 
-  s0.get<0>().setData(Ry<Scalar>(0.2));
-  s0.get<1>().setData(core::Vector3_<Scalar>(1.0, 0.0, 0.0));
+  s0.get<0>().setData(Ry<Scalar>(0.));
+  s0.get<1>().setData(core::Vector3_<Scalar>(1.0, 1.0, 1.0));
 
   SigmaPoints<JointType> spoints;
 
@@ -59,8 +59,8 @@ int main(int argc, char* argv[]) {
 
   ut.toMeanCov(spoints, rec, cov_rec);
 
-  std::cout << "s0\n";
-  std::cout << s0 << "\n";
+  std::cout << "rec\n";
+  std::cout << rec << "\n";
   std::cout << cov_rec << "\n";
 
   std::cout << "wm0: " << spoints.wm0 << "\n";
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
             << "\n";
 
   // square root UKF
-  CovType square_root_process_cov = 0.000000001 * CovType::Identity();
+  CovType square_root_process_cov = 0.0 * CovType::Identity();
 
   ut.toUnscented(s0, cov, spoints);
 
@@ -90,5 +90,6 @@ int main(int argc, char* argv[]) {
   std::cout << "x\n";
   std::cout << x.get<0>().data() << "\n" << x.get<1>().data() << "\n";
 
-  std::cout << L.transpose() * L << "\n";
+  std::cout << L.transpose() * L << "\n\n";
+  std::cout << L * L.transpose() << "\n";
 }

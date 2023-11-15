@@ -75,6 +75,23 @@ target_link_libraries(test_ukf
                       common
 )
 
+add_executable(nclt_gtsam nclt_gtsam.cpp)
+target_link_libraries(nclt_gtsam
+                      gtsam
+)
+
+add_executable(nclt nclt.cpp)
+target_link_libraries(nclt
+                      common
+                      imu_preintegrator
+                      preintegration_factor
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+                      ${catkin_LIBRARIES}
+)
+
+
+
 find_package(GTSAMCMakeTools)
 find_package(GTSAM REQUIRED) # Uses installed package
 include_directories(${GTSAM_INCLUDE_DIR})

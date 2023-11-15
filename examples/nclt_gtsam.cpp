@@ -32,21 +32,6 @@ using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
 using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
 using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
 
-struct KittiCalibration {
-  double body_ptx;
-  double body_pty;
-  double body_ptz;
-  double body_prx;
-  double body_pry;
-  double body_prz;
-  double accelerometer_sigma;
-  double gyroscope_sigma;
-  double integration_sigma;
-  double accelerometer_bias_sigma;
-  double gyroscope_bias_sigma;
-  double average_delta_t;
-};
-
 struct ImuMeasurement {
   double time;
   double dt;
@@ -59,138 +44,112 @@ struct GpsMeasurement {
   Vector3 position; // x,y,z
 };
 
-const string output_filename = "/workspace/src/test_imu/IMUKittiExampleGPSResults.csv";
+const string output_filename = "/workspace/src/test_imu/nclt_gtsam.csv";
 
-void loadKittiData(KittiCalibration& kitti_calibration,
-                   vector<ImuMeasurement>& imu_measurements,
-                   vector<GpsMeasurement>& gps_measurements) {
-  string line;
+struct Sigmas {
+  float acc       = 0.00001f;
+  float gyro      = 0.00001f;
+  float bias_acc  = 0.0000001f;
+  float bias_gyro = 0.0000001f;
 
-  // Read IMU metadata and compute relative sensor pose transforms
-  // BodyPtx BodyPty BodyPtz BodyPrx BodyPry BodyPrz AccelerometerSigma
-  // GyroscopeSigma IntegrationSigma AccelerometerBiasSigma GyroscopeBiasSigma
-  // AverageDeltaT
-  string imu_metadata_file = findExampleDataFile("KittiEquivBiasedImu_metadata.txt");
-  ifstream imu_metadata(imu_metadata_file.c_str());
+  float gps = 0.02f;
+} sigmas;
 
-  printf("-- Reading sensor metadata\n");
-
-  getline(imu_metadata, line, '\n'); // ignore the first line
-
-  // Load Kitti calibration
-  getline(imu_metadata, line, '\n');
-  sscanf(line.c_str(),
-         "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-         &kitti_calibration.body_ptx,
-         &kitti_calibration.body_pty,
-         &kitti_calibration.body_ptz,
-         &kitti_calibration.body_prx,
-         &kitti_calibration.body_pry,
-         &kitti_calibration.body_prz,
-         &kitti_calibration.accelerometer_sigma,
-         &kitti_calibration.gyroscope_sigma,
-         &kitti_calibration.integration_sigma,
-         &kitti_calibration.accelerometer_bias_sigma,
-         &kitti_calibration.gyroscope_bias_sigma,
-         &kitti_calibration.average_delta_t);
-  printf("IMU metadata: %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-         kitti_calibration.body_ptx,
-         kitti_calibration.body_pty,
-         kitti_calibration.body_ptz,
-         kitti_calibration.body_prx,
-         kitti_calibration.body_pry,
-         kitti_calibration.body_prz,
-         kitti_calibration.accelerometer_sigma,
-         kitti_calibration.gyroscope_sigma,
-         kitti_calibration.integration_sigma,
-         kitti_calibration.accelerometer_bias_sigma,
-         kitti_calibration.gyroscope_bias_sigma,
-         kitti_calibration.average_delta_t);
-
-  // Read IMU data
-  // Time dt accelX accelY accelZ omegaX omegaY omegaZ
-  string imu_data_file = findExampleDataFile("KittiEquivBiasedImu.txt");
-  printf("-- Reading IMU measurements from file\n");
-  {
-    ifstream imu_data(imu_data_file.c_str());
-    getline(imu_data, line, '\n'); // ignore the first line
-
-    double time = 0, dt = 0, acc_x = 0, acc_y = 0, acc_z = 0, gyro_x = 0, gyro_y = 0, gyro_z = 0;
-    while (!imu_data.eof()) {
-      getline(imu_data, line, '\n');
-      sscanf(line.c_str(),
-             "%lf %lf %lf %lf %lf %lf %lf %lf",
-             &time,
-             &dt,
-             &acc_x,
-             &acc_y,
-             &acc_z,
-             &gyro_x,
-             &gyro_y,
-             &gyro_z);
-
-      ImuMeasurement measurement;
-      measurement.time          = time;
-      measurement.dt            = dt;
-      measurement.accelerometer = Vector3(acc_x, acc_y, acc_z);
-      measurement.gyroscope     = Vector3(gyro_x, gyro_y, gyro_z);
-      imu_measurements.push_back(measurement);
-    }
+void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
+                  vector<GpsMeasurement>& gps_measurements) {
+  const std::string data_folder("/workspace/src/test_imu/data/nclt");
+  string imu_filename = "ms25.csv";
+  string gps_filename = "gps_rtk.csv";
+  ifstream imu_file(data_folder + "/" + imu_filename);
+  if (!imu_file) {
+    throw std::runtime_error("loadNCLTData: cannot open IMU data file at" + data_folder + "/" +
+                             imu_filename + ".");
   }
 
-  // Read GPS data
-  // Time,X,Y,Z
-  string gps_data_file = findExampleDataFile("KittiGps_converted.txt");
-  printf("-- Reading GPS measurements from file\n");
-  {
-    ifstream gps_data(gps_data_file.c_str());
-    getline(gps_data, line, '\n'); // ignore the first line
+  string line;
+  while (std::getline(imu_file, line)) {
+    ImuMeasurement meas;
 
-    double time = 0, gps_x = 0, gps_y = 0, gps_z = 0;
-    while (!gps_data.eof()) {
-      getline(gps_data, line, '\n');
-      sscanf(line.c_str(), "%lf,%lf,%lf,%lf", &time, &gps_x, &gps_y, &gps_z);
+    sscanf(line.c_str(),
+           "%lf,%*f,%*f,%*f,%lf,%lf,%lf,%lf,%lf,%lf",
+           &meas.time,
+           &meas.accelerometer.x(),
+           &meas.accelerometer.y(),
+           &meas.accelerometer.z(),
+           &meas.gyroscope.x(),
+           &meas.gyroscope.y(),
+           &meas.gyroscope.z());
+    meas.time *= 1e-6;
+    if (imu_measurements.size() == 0) {
+    } else if (imu_measurements.size() == 1) {
+      meas.dt                   = meas.time - imu_measurements.at(0).time;
+      imu_measurements.at(0).dt = meas.dt;
+    } else {
+      meas.dt = meas.time - imu_measurements.at(imu_measurements.size() - 2).time;
+    }
 
-      GpsMeasurement measurement;
-      measurement.time     = time;
-      measurement.position = Vector3(gps_x, gps_y, gps_z);
-      gps_measurements.push_back(measurement);
+    imu_measurements.push_back(meas);
+  }
+
+  ifstream gps_file(data_folder + "/" + gps_filename);
+  if (!gps_file) {
+    throw std::runtime_error("loadNCLTData: cannot open GPS data file at" + data_folder + "/" +
+                             gps_filename + ".");
+  }
+
+  double lat0 = (42.293227f / 180.0f) * M_PI;
+  double lng0 = (-83.709657 / 180.0f) * M_PI;
+  double alt0 = 270.0;
+
+  double re = 6378135;
+  double rp = 6356750;
+
+  double den = pow(re * cos(lat0), 2) + pow(rp * sin(lat0), 2.0);
+
+  // radius north south
+  double rns = pow(re * rp, 2) / pow(den, 3.0 / 2.0);
+
+  // radius east west
+  double rew = (re * re) / sqrt(den);
+
+  while (std::getline(gps_file, line)) {
+    GpsMeasurement meas;
+
+    double lat, lng, alt;
+
+    int fix_mode;
+
+    sscanf(line.c_str(), "%lf,%d,%*d,%lf,%lf,%lf,%*f,%*f", &meas.time, &fix_mode, &lat, &lng, &alt);
+
+    if (fix_mode == 3) {
+      // convert using formulas in pdf
+      meas.position.x() = sin(lat - lat0) * rns;
+      meas.position.y() = sin(lng - lng0) * rew * cos(lat0);
+      meas.position.z() = alt0 - alt;
+      meas.time *= 1e-6;
+      gps_measurements.push_back(meas);
     }
   }
 }
 
 int main(int argc, char* argv[]) {
+  // DOES NOT WORK: ILL CONDITIONED SYSTEM
   Values result;
 
-  KittiCalibration kitti_calibration;
   vector<ImuMeasurement> imu_measurements;
   vector<GpsMeasurement> gps_measurements;
-  loadKittiData(kitti_calibration, imu_measurements, gps_measurements);
-
-  Vector6 BodyP = (Vector6() << kitti_calibration.body_ptx,
-                   kitti_calibration.body_pty,
-                   kitti_calibration.body_ptz,
-                   kitti_calibration.body_prx,
-                   kitti_calibration.body_pry,
-                   kitti_calibration.body_prz)
-                    .finished();
-  auto body_T_imu = Pose3::Expmap(BodyP);
-  if (!body_T_imu.equals(Pose3(), 1e-5)) {
-    printf("Currently only support IMUinBody is identity, i.e. IMU and body frame "
-           "are the same");
-    exit(-1);
-  }
-
+  loadNCLTData(imu_measurements, gps_measurements);
+  std::cout << " loaded measurements\n";
   // Configure different variables
   // double t_offset = gps_measurements[0].time;
   size_t first_gps_pose = 1;
-  size_t gps_skip       = 2; // Skip this many GPS measurements each time
+  size_t gps_skip       = 10; // Skip this many GPS measurements each time
   double g              = 9.8;
   auto w_coriolis       = Vector3::Zero(); // zero vector
 
   // Configure noise models
   auto noise_model_gps = noiseModel::Diagonal::Precisions(
-    (Vector6() << Vector3::Constant(0), Vector3::Constant(1.0 / 0.07)).finished());
+    (Vector6() << Vector3::Constant(0), Vector3::Constant(1.0 / sigmas.gps)).finished());
 
   // Set initial conditions for the estimated trajectory
   // initial pose is the reference frame (navigation frame)
@@ -206,10 +165,10 @@ int main(int argc, char* argv[]) {
     (Vector6() << Vector3::Constant(0.100), Vector3::Constant(5.00e-05)).finished());
 
   // Set IMU preintegration parameters
-  Matrix33 measured_acc_cov   = I_3x3 * pow(kitti_calibration.accelerometer_sigma, 2);
-  Matrix33 measured_omega_cov = I_3x3 * pow(kitti_calibration.gyroscope_sigma, 2);
+  Matrix33 measured_acc_cov   = I_3x3 * sigmas.acc;
+  Matrix33 measured_omega_cov = I_3x3 * sigmas.gyro;
   // error committed in integrating position from velocities
-  Matrix33 integration_error_cov = I_3x3 * pow(kitti_calibration.integration_sigma, 2);
+  Matrix33 integration_error_cov = I_3x3 * 0.0;
 
   auto imu_params                     = PreintegratedImuMeasurements::Params::MakeSharedU(g);
   imu_params->accelerometerCovariance = measured_acc_cov;      // acc white noise in continuous
@@ -292,9 +251,8 @@ int main(int argc, char* argv[]) {
       // Bias evolution as given in the IMU metadata
       auto sigma_between_b = noiseModel::Diagonal::Sigmas(
         (Vector6() << Vector3::Constant(sqrt(included_imu_measurement_count) *
-                                        kitti_calibration.accelerometer_bias_sigma),
-         Vector3::Constant(sqrt(included_imu_measurement_count) *
-                           kitti_calibration.gyroscope_bias_sigma))
+                                        std::sqrt(sigmas.bias_acc)),
+         Vector3::Constant(sqrt(included_imu_measurement_count) * std::sqrt(sigmas.bias_gyro)))
           .finished());
       new_factors.emplace_shared<BetweenFactor<imuBias::ConstantBias>>(
         previous_bias_key, current_bias_key, imuBias::ConstantBias(), sigma_between_b);

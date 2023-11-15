@@ -1,7 +1,6 @@
 #include <fstream>
 #include <iostream>
 
-#define _USE_MATH_DEFINES
 #include "variables_and_factors/gps_factor_ad.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 
@@ -17,57 +16,32 @@
 #include "srrg_solver/solver_core/solver.h"
 #include "srrg_solver/variables_and_factors/types_3d/all_types.h"
 #include "srrg_solver/variables_and_factors/types_3d/instances.h"
-#include <srrg_solver/solver_core/iteration_algorithm_ddl.h>
 #include <srrg_solver/solver_core/iteration_algorithm_dl.h>
 #include <srrg_solver/solver_core/iteration_algorithm_gn.h>
 #include <srrg_solver/solver_core/iteration_algorithm_lm.h>
-#include <srrg_system_utils/parse_command_line.h>
 
 #include "srrg_solver/solver_core/factor_graph_view.h"
-
-#include <thread>
-#include <unistd.h>
-
-#include <string.h>
 
 using namespace std;
 using namespace srrg2_core;
 using namespace srrg2_solver;
+using test_imu::ImuMeasurement;
 
-const std::string example_folder("/workspace/src/test_imu");
-
-struct KittiCalibration {
-  double body_ptx;
-  double body_pty;
-  double body_ptz;
-  double body_prx;
-  double body_pry;
-  double body_prz;
-  double accelerometer_sigma;
-  double gyroscope_sigma;
-  double integration_sigma;
-  double accelerometer_bias_sigma;
-  double gyroscope_bias_sigma;
-  double average_delta_t;
-};
-
-struct ImuMeasurement {
-  double time;
-  double dt;
-  Vector3f accelerometer;
-  Vector3f gyroscope; // omega
-};
+const std::string data_folder("/workspace/src/test_imu/data/nclt");
 
 struct GpsMeasurement {
   double time;
   Vector3f position; // x,y,z
 };
 
-void loadKittiData(KittiCalibration& kitti_calibration,
-                   vector<ImuMeasurement>& imu_measurements,
-                   vector<GpsMeasurement>& gps_measurements);
+struct Sigmas {
+  float acc       = 0.01f;
+  float gyro      = 0.000175f;
+  float bias_acc  = 0.000000167f;
+  float bias_gyro = 2.91e-009f;
 
-void viewGraph(ViewerCanvasPtr canvas_);
+  float gps = 10.0f;
+} sigmas;
 
 bool string_in_array(const string& query, int argc, char* argv[]) {
   for (int i = 1; i < argc; ++i)
@@ -77,10 +51,15 @@ bool string_in_array(const string& query, int argc, char* argv[]) {
   return false;
 }
 
+void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
+                  vector<GpsMeasurement>& gps_measurements);
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
-  const int window_size = 8;
-  const int gps_skip    = 2; // 1 is no skips
+  const int window_size = 32;
+  const int gps_skip    = 16;
+
+  const int first_gps = 249;
+
   // which variables get locally optimized
   IdSet variable_ids;
   std::queue<VariableBase::Id> pose_local_ids;
@@ -94,24 +73,21 @@ int main(int argc, char* argv[]) {
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
   // inspect covariances
-  ofstream cov_dump(example_folder + "/covariance.txt");
-  ofstream det_dump(example_folder + "/determinant.txt");
+  ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
+  ofstream det_dump("/workspace/src/test_imu/determinant.txt");
 
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
 
-  KittiCalibration kitti_calibration;
   vector<ImuMeasurement> imu_measurements;
   vector<GpsMeasurement> gps_measurements;
-  loadKittiData(kitti_calibration, imu_measurements, gps_measurements);
+  loadNCLTData(imu_measurements, gps_measurements);
 
   Solver solver;
   // solver.param_termination_criteria.setValue(nullptr);
-  solver.param_max_iterations.pushBack(14);
-  IterationAlgorithmBasePtr alg(new IterationAlgorithmDL);
+  solver.param_max_iterations.pushBack(15);
+  IterationAlgorithmBasePtr alg(new IterationAlgorithmLM);
   solver.param_algorithm.setValue(alg);
-  solver.param_verbose.setValue(true);
-
   FactorGraphPtr graph(new FactorGraph);
 
   using VarPoseImuType = VariableSE3ExpMapRightAD;
@@ -122,10 +98,13 @@ int main(int argc, char* argv[]) {
 
   // initialization
 
-  const Vector3f& init_gps_pose = gps_measurements.at(0).position;
+  Isometry3f imu_in_gps; // imu in gps_rtk
+  imu_in_gps.setIdentity();
+  imu_in_gps.translation() << 0.13, 0.18, 0.53;
+
+  const Vector3f& init_gps_pose = gps_measurements.at(first_gps).position;
   Isometry3f init_pose          = Isometry3f::Identity();
   init_pose.translation()       = init_gps_pose;
-  init_pose.linear()            = test_imu::Rz(0.785f);
 
   VarPoseImuType* prev_pose_var = new VarPoseImuType();
   prev_pose_var->setEstimate(init_pose);
@@ -135,7 +114,7 @@ int main(int argc, char* argv[]) {
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
 
-  float info_gps = 1 / 0.07;
+  float info_gps = 1 / sigmas.gps;
   gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
   gps_factor->setMeasurement(init_gps_pose);
   graph->addFactor(FactorBasePtr(gps_factor));
@@ -155,23 +134,19 @@ int main(int argc, char* argv[]) {
 
   ImuBiasVar* prev_bias_acc = new ImuBiasVar();
   prev_bias_acc->setGraphId(2);
-  prev_bias_acc->setEstimate(Vector3f::Zero());
-  prev_bias_acc->setStatus(VariableBase::Fixed);
+  prev_bias_acc->setEstimate(0 * Vector3f::Ones());
+  // prev_bias_acc->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_acc));
   acc_bias_local_ids.push(prev_bias_acc->graphId());
   variable_ids.insert(prev_bias_acc->graphId());
 
-  std::cout << "adding bias_acc variable with id: " << prev_bias_acc->graphId() << "\n";
-
   ImuBiasVar* prev_bias_gyro = new ImuBiasVar();
   prev_bias_gyro->setGraphId(3);
-  prev_bias_gyro->setEstimate(Vector3f::Zero());
-  prev_bias_gyro->setStatus(VariableBase::Fixed);
+  prev_bias_gyro->setEstimate(0 * Vector3f::Ones());
+  // prev_bias_gyro->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_gyro));
   gyro_bias_local_ids.push(prev_bias_gyro->graphId());
   variable_ids.insert(prev_bias_gyro->graphId());
-
-  std::cout << "adding bias_gyro variable with id: " << prev_bias_gyro->graphId() << "\n";
 
   size_t graph_id = 4;
 
@@ -196,25 +171,13 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(kitti_calibration.gyroscope_sigma));
-  imu_preintegrator->setNoiseAccelerometer(
-    Vector3f::Constant(kitti_calibration.accelerometer_sigma));
-  imu_preintegrator->setNoiseBiasGyroscope(
-    Vector3f::Constant(kitti_calibration.gyroscope_bias_sigma));
-  imu_preintegrator->setNoiseBiasAccelerometer(
-    Vector3f::Constant(kitti_calibration.accelerometer_bias_sigma));
-
-  /* imu_preintegrator->setNoiseGyroscope(
-    Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
-  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
-    kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
-  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
-    kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
-  imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
-    kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma)); */
+  imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(sigmas.gyro));
+  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(sigmas.acc));
+  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(sigmas.bias_gyro));
+  imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(sigmas.bias_acc));
 
   size_t j = 0;
-  for (size_t i = 1; i < gps_measurements.size(); i = i + gps_skip) {
+  for (size_t i = first_gps + 1; i < gps_measurements.size() / 2; i = i + gps_skip) {
     int prev_idx = (i == 1) ? 0 : i - gps_skip;
 
     const double t_previous = gps_measurements.at(prev_idx).time;
@@ -225,13 +188,11 @@ int main(int argc, char* argv[]) {
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
 
-    while (j < imu_measurements.size() && imu_measurements.at(j).time <= gps_time) {
-      if (imu_measurements.at(j).time >= t_previous) {
-        test_imu::ImuMeasurement meas;
-        meas.acceleration = imu_measurements.at(j).accelerometer;
-        meas.angular_vel  = imu_measurements.at(j).gyroscope;
-        meas.timestamp    = imu_measurements.at(j).time;
-        imu_preintegrator->preintegrate(meas, imu_measurements.at(j).dt);
+    while (j < imu_measurements.size() && imu_measurements.at(j).timestamp <= gps_time) {
+      if (imu_measurements.at(j).timestamp >= t_previous) {
+        imu_preintegrator->preintegrate(imu_measurements.at(j),
+                                        imu_measurements.at(j + 1).timestamp -
+                                          imu_measurements.at(j).timestamp);
       }
 
       j++;
@@ -284,9 +245,9 @@ int main(int argc, char* argv[]) {
               << " measurements.\n";
     if (use_imu && imu_preintegrator->measurements().size() > 0) {
       if (!use_slim) {
-        std::cout << "full factor\n";
         ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
-        imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
+        imu_factor->setOffset(imu_in_gps);
+        imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
         imu_factor->setVariableId(2, curr_pose_var->graphId());
@@ -300,10 +261,11 @@ int main(int argc, char* argv[]) {
         imu_factor->setMeasurement(*imu_preintegrator);
 
         graph->addFactor(FactorBasePtr(imu_factor));
+
       } else {
-        std::cout << "slim factor\n";
         ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
-        imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
+        imu_factor->setOffset(imu_in_gps);
+        imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
         imu_factor->setVariableId(2, curr_pose_var->graphId());
@@ -316,8 +278,8 @@ int main(int argc, char* argv[]) {
         bias_factor->setVariableId(2, curr_bias_acc->graphId());
         bias_factor->setVariableId(3, curr_bias_gyro->graphId());
         Matrix6f bias_sigma = Matrix6f::Identity();
-        bias_sigma.block<3, 3>(0, 0) *= kitti_calibration.accelerometer_bias_sigma;
-        bias_sigma.block<3, 3>(3, 3) *= kitti_calibration.gyroscope_bias_sigma;
+        bias_sigma.block<3, 3>(0, 0) *= dT * sigmas.bias_acc;
+        bias_sigma.block<3, 3>(3, 3) *= dT * sigmas.bias_gyro;
         bias_factor->setInformationMatrix(bias_sigma.inverse());
         imu_factor->setMeasurement(*imu_preintegrator);
 
@@ -325,7 +287,6 @@ int main(int argc, char* argv[]) {
         graph->addFactor(FactorBasePtr(imu_factor));
       }
     }
-
     FactorGpsType* gps_factor = new FactorGpsType();
     gps_factor->setVariableId(0, curr_pose_var->graphId());
 
@@ -336,18 +297,14 @@ int main(int argc, char* argv[]) {
       graph->addFactor(FactorBasePtr(gps_factor));
     }
     cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
-    cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
+    // cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
     det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
     // local optimization
-    std::cout << "#local poses " << pose_local_ids.size() << "\n";
     FactorGraphView local_window;
 
-    std::cout << "local opt.\n";
-
     while (pose_local_ids.size() > window_size) {
-      std::cout << "sliding variables\n";
       variable_ids.erase(pose_local_ids.front());
       variable_ids.erase(vel_local_ids.front());
       variable_ids.erase(acc_bias_local_ids.front());
@@ -362,10 +319,10 @@ int main(int argc, char* argv[]) {
 
     // we fix the first variables to remove degrees of freedom
     // especially important with slim factors
-    local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    // local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    // local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    // local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    // local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
 
     solver.setGraph(local_window);
     solver.compute();
@@ -393,13 +350,13 @@ int main(int argc, char* argv[]) {
 
   std::cout << "final optimization" << std::endl;
   std::cout << solver.iterationStats() << std::endl;
-  const std::string boss_graph_filename = example_folder + "/imu_gps_optimized.boss";
+  const std::string boss_graph_filename = "/workspace/src/test_imu/imu_gps_optimized.boss";
 
   solver.saveGraph(boss_graph_filename);
   std::cout << "graph written in " << boss_graph_filename << std::endl;
 
   ofstream dumper;
-  dumper.open(example_folder + "/output.txt");
+  dumper.open("/workspace/src/test_imu/output.txt");
 
   for (size_t i = 0; i < graph->variables().size(); ++i) {
     const VarPoseImuType* curr_pose_var = dynamic_cast<const VarPoseImuType*>(graph->variable(i));
@@ -419,94 +376,71 @@ int main(int argc, char* argv[]) {
   det_dump.close();
 }
 
-void loadKittiData(KittiCalibration& kitti_calibration,
-                   vector<ImuMeasurement>& imu_measurements,
-                   vector<GpsMeasurement>& gps_measurements) {
-  string line;
+void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
+                  vector<GpsMeasurement>& gps_measurements) {
+  string imu_filename = "ms25.csv";
+  string gps_filename = "gps_rtk.csv";
 
-  // Read IMU metadata and compute relative sensor pose transforms
-  // BodyPtx BodyPty BodyPtz BodyPrx BodyPry BodyPrz AccelerometerSigma GyroscopeSigma
-  // IntegrationSigma AccelerometerBiasSigma GyroscopeBiasSigma AverageDelta
-  ifstream imu_metadata(example_folder + "/data/KittiImuBiasedMetadata.txt");
-  printf("-- Reading sensor metadata\n");
-
-  getline(imu_metadata, line, '\n'); // ignore the first line
-  // Load Kitti calibration
-  getline(imu_metadata, line, '\n');
-  sscanf(line.c_str(),
-         "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-         &kitti_calibration.body_ptx,
-         &kitti_calibration.body_pty,
-         &kitti_calibration.body_ptz,
-         &kitti_calibration.body_prx,
-         &kitti_calibration.body_pry,
-         &kitti_calibration.body_prz,
-         &kitti_calibration.accelerometer_sigma,
-         &kitti_calibration.gyroscope_sigma,
-         &kitti_calibration.integration_sigma,
-         &kitti_calibration.accelerometer_bias_sigma,
-         &kitti_calibration.gyroscope_bias_sigma,
-         &kitti_calibration.average_delta_t);
-  printf("IMU metadata: %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-         kitti_calibration.body_ptx,
-         kitti_calibration.body_pty,
-         kitti_calibration.body_ptz,
-         kitti_calibration.body_prx,
-         kitti_calibration.body_pry,
-         kitti_calibration.body_prz,
-         kitti_calibration.accelerometer_sigma,
-         kitti_calibration.gyroscope_sigma,
-         kitti_calibration.integration_sigma,
-         kitti_calibration.accelerometer_bias_sigma,
-         kitti_calibration.gyroscope_bias_sigma,
-         kitti_calibration.average_delta_t);
-
-  // Read IMU data
-  // Time dt accelX accelY accelZ omegaX omegaY omegaZ
-  printf("-- Reading IMU measurements from file\n");
-  {
-    ifstream imu_data(example_folder + "/data/KittiImuBiased.txt");
-    getline(imu_data, line, '\n'); // ignore the first line
-
-    double time = 0, dt = 0, acc_x = 0, acc_y = 0, acc_z = 0, gyro_x = 0, gyro_y = 0, gyro_z = 0;
-    while (!imu_data.eof()) {
-      getline(imu_data, line, '\n');
-      sscanf(line.c_str(),
-             "%lf %lf %lf %lf %lf %lf %lf %lf",
-             &time,
-             &dt,
-             &acc_x,
-             &acc_y,
-             &acc_z,
-             &gyro_x,
-             &gyro_y,
-             &gyro_z);
-
-      ImuMeasurement measurement;
-      measurement.time          = time;
-      measurement.dt            = dt;
-      measurement.accelerometer = Vector3f(acc_x, acc_y, acc_z);
-      measurement.gyroscope     = Vector3f(gyro_x, gyro_y, gyro_z);
-      imu_measurements.push_back(measurement);
-    }
+  ifstream imu_file(data_folder + "/" + imu_filename);
+  if (!imu_file) {
+    throw std::runtime_error("loadNCLTData: cannot open IMU data file at" + data_folder + "/" +
+                             imu_filename + ".");
   }
 
-  // Read GPS data
-  // Time,X,Y,Z
-  printf("-- Reading GPS measurements from file\n");
-  {
-    ifstream gps_data(example_folder + "/data/KittiGps.txt");
-    getline(gps_data, line, '\n'); // ignore the first line
+  string line;
+  while (std::getline(imu_file, line)) {
+    ImuMeasurement meas;
 
-    double time = 0, gps_x = 0, gps_y = 0, gps_z = 0;
-    while (!gps_data.eof()) {
-      getline(gps_data, line, '\n');
-      sscanf(line.c_str(), "%lf,%lf,%lf,%lf", &time, &gps_x, &gps_y, &gps_z);
+    sscanf(line.c_str(),
+           "%lf,%*f,%*f,%*f,%f,%f,%f,%f,%f,%f",
+           &meas.timestamp,
+           &meas.acceleration.x(),
+           &meas.acceleration.y(),
+           &meas.acceleration.z(),
+           &meas.angular_vel.x(),
+           &meas.angular_vel.y(),
+           &meas.angular_vel.z());
+    meas.timestamp *= 1e-6;
+    imu_measurements.push_back(meas);
+  }
 
-      GpsMeasurement measurement;
-      measurement.time     = time;
-      measurement.position = Vector3f(gps_x, gps_y, gps_z);
-      gps_measurements.push_back(measurement);
+  ifstream gps_file(data_folder + "/" + gps_filename);
+  if (!gps_file) {
+    throw std::runtime_error("loadNCLTData: cannot open GPS data file at" + data_folder + "/" +
+                             gps_filename + ".");
+  }
+
+  double lat0 = (42.293227f / 180.0f) * M_PI;
+  double lng0 = (-83.709657 / 180.0f) * M_PI;
+  double alt0 = 270.0;
+
+  double re = 6378135;
+  double rp = 6356750;
+
+  double den = pow(re * cos(lat0), 2) + pow(rp * sin(lat0), 2.0);
+
+  // radius north south
+  double rns = pow(re * rp, 2) / pow(den, 3.0 / 2.0);
+
+  // radius east west
+  double rew = (re * re) / sqrt(den);
+
+  while (std::getline(gps_file, line)) {
+    GpsMeasurement meas;
+
+    double lat, lng, alt;
+
+    int fix_mode;
+
+    sscanf(line.c_str(), "%lf,%d,%*d,%lf,%lf,%lf,%*f,%*f", &meas.time, &fix_mode, &lat, &lng, &alt);
+
+    if (fix_mode == 3) {
+      // convert using formulas in pdf
+      meas.position.x() = sin(lat - lat0) * rns;
+      meas.position.y() = sin(lng - lng0) * rew * cos(lat0);
+      meas.position.z() = alt0 - alt;
+      meas.time *= 1e-6;
+      gps_measurements.push_back(meas);
     }
   }
 }

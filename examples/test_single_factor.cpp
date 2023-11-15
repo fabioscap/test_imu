@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
   solver.param_max_iterations.pushBack(100);
-  IterationAlgorithmDL* alg(new IterationAlgorithmDL);
+  IterationAlgorithmLM* alg(new IterationAlgorithmLM);
   // alg->param_damping.setValue(1);
   solver.param_algorithm.setValue(IterationAlgorithmBasePtr(alg));
   FactorGraphPtr graph(new FactorGraph);
@@ -131,10 +131,12 @@ int main(int argc, char* argv[]) {
   ImuMeasurement meas;
   size_t i;
   for (i = 0; i < data.size() - 1; ++i) {
+    std::cout << i << "\n";
     if (i == 0) {
       initial_pose = std::get<2>(data.at(i));
       meas         = std::get<0>(data.at(i));
       integrator->preintegrate(meas, dt);
+      std::cout << "after preintegration\n";
       pose_start->setEstimate(initial_pose);
       vel_start->setEstimate(std::get<1>(data.at(i)));
       if (!slim) {
@@ -150,6 +152,8 @@ int main(int argc, char* argv[]) {
       break;
     integrator->preintegrate(meas, dt);
   }
+
+  std::cout << "solve\n";
 
   if (!slim) {
     ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();

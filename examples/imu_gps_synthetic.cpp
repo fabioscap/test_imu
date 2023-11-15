@@ -19,6 +19,11 @@
 #include "srrg_solver/variables_and_factors/types_3d/all_types.h"
 #include "srrg_solver/variables_and_factors/types_3d/instances.h"
 #include <srrg_solver/solver_core/iteration_algorithm_dl.h>
+#include <srrg_solver/solver_core/iteration_algorithm_lm.h>
+
+#include "srrg_solver/solver_core/factor_graph_view.h"
+
+#include <Eigen/SparseCore>
 
 #include <thread>
 #include <unistd.h>
@@ -36,8 +41,8 @@ const std::string example_folder("/workspace/src/test_imu");
 struct Sigmas {
   float acc       = 0.00175f;
   float gyro      = 0.00175f;
-  float bias_acc  = 0.00167f;
-  float bias_gyro = 0.00167f;
+  float bias_acc  = 0.000167f;
+  float bias_gyro = 0.000167f;
 
   float gps = 0.0002f;
 } sigmas;
@@ -60,6 +65,16 @@ bool string_in_array(const string& query, int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+  // incremental optimization parameters
+  const int window_size = 2;
+  const int gps_skip    = 1;
+  // which variables get locally optimized
+  IdSet variable_ids;
+  std::queue<VariableBase::Id> pose_local_ids;
+  std::queue<VariableBase::Id> vel_local_ids;
+  std::queue<VariableBase::Id> acc_bias_local_ids;
+  std::queue<VariableBase::Id> gyro_bias_local_ids;
+
   bool use_ukf  = string_in_array("ukf", argc, argv);
   bool use_imu  = !string_in_array("noimu", argc, argv);
   bool use_slim = string_in_array("slim", argc, argv);
@@ -80,7 +95,7 @@ int main(int argc, char* argv[]) {
   Solver solver;
   // solver.param_termination_criteria.setValue(nullptr);
   solver.param_max_iterations.pushBack(15);
-  IterationAlgorithmBasePtr alg(new IterationAlgorithmDL);
+  IterationAlgorithmBasePtr alg(new IterationAlgorithmLM);
   solver.param_algorithm.setValue(alg);
   FactorGraphPtr graph(new FactorGraph);
 
@@ -104,30 +119,37 @@ int main(int argc, char* argv[]) {
   // prev_pose_var->setStatus(VariableBase::Status::Fixed);
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
-  float sigma_gps = 0.001;
-  float info_gps  = 1 / (sigma_gps * sigma_gps);
+  float info_gps = 1 / (0.07);
   gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
   gps_factor->setMeasurement(init_gps_pose);
 
   graph->addVariable(VariableBasePtr(prev_pose_var));
+  pose_local_ids.push(prev_pose_var->graphId());
+  variable_ids.insert(prev_pose_var->graphId());
 
   VarVelImuType* prev_vel_var = new VarVelImuType();
   prev_vel_var->setEstimate(vel_zero);
   prev_vel_var->setGraphId(1);
   prev_vel_var->setStatus(VariableBase::Status::Fixed);
   graph->addVariable(VariableBasePtr(prev_vel_var));
+  vel_local_ids.push(prev_vel_var->graphId());
+  variable_ids.insert(prev_vel_var->graphId());
 
   ImuBiasVar* prev_bias_acc = new ImuBiasVar();
   prev_bias_acc->setGraphId(2);
   prev_bias_acc->setEstimate(Vector3f::Zero());
   prev_bias_acc->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_acc));
+  acc_bias_local_ids.push(prev_bias_acc->graphId());
+  variable_ids.insert(prev_bias_acc->graphId());
 
   ImuBiasVar* prev_bias_gyro = new ImuBiasVar();
   prev_bias_gyro->setGraphId(3);
   prev_bias_gyro->setEstimate(Vector3f::Zero());
   prev_bias_gyro->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_gyro));
+  gyro_bias_local_ids.push(prev_bias_gyro->graphId());
+  variable_ids.insert(prev_bias_gyro->graphId());
 
   size_t graph_id = 4;
 
@@ -191,6 +213,8 @@ int main(int argc, char* argv[]) {
     curr_pose_var->setEstimate(curr_pose);
     curr_pose_var->setGraphId(graph_id++);
     graph->addVariable(VariableBasePtr(curr_pose_var));
+    pose_local_ids.push(curr_pose_var->graphId());
+    variable_ids.insert(curr_pose_var->graphId());
 
     VarVelImuType* curr_vel_var = new VarVelImuType();
     curr_vel_var->setGraphId(graph_id++);
@@ -198,6 +222,8 @@ int main(int argc, char* argv[]) {
       static_cast<VarVelImuType*>(graph->variable(graph_id - 3))->estimate();
     curr_vel_var->setEstimate(prev_vel);
     graph->addVariable(VariableBasePtr(curr_vel_var));
+    vel_local_ids.push(curr_vel_var->graphId());
+    variable_ids.insert(curr_vel_var->graphId());
 
     ImuBiasVar* curr_bias_acc  = new ImuBiasVar();
     ImuBiasVar* curr_bias_gyro = new ImuBiasVar();
@@ -205,6 +231,10 @@ int main(int argc, char* argv[]) {
     curr_bias_gyro->setGraphId(graph_id++);
     curr_bias_acc->setEstimate(Vector3f::Zero());
     curr_bias_gyro->setEstimate(Vector3f::Zero());
+    acc_bias_local_ids.push(curr_bias_acc->graphId());
+    variable_ids.insert(curr_bias_acc->graphId());
+    gyro_bias_local_ids.push(curr_bias_gyro->graphId());
+    variable_ids.insert(curr_bias_gyro->graphId());
     graph->addVariable(VariableBasePtr(curr_bias_acc));
     graph->addVariable(VariableBasePtr(curr_bias_gyro));
 
@@ -258,7 +288,7 @@ int main(int argc, char* argv[]) {
     gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
     gps_factor->setMeasurement(curr_gps_pose);
 
-    if (use_gps) {
+    if (use_gps && i % gps_skip == 0) {
       graph->addFactor(FactorBasePtr(gps_factor));
     }
 
@@ -266,12 +296,40 @@ int main(int argc, char* argv[]) {
     det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
-    if (i > 5) {
-      solver.setGraph(graph);
+    // local optimization
+    std::cout << "#local poses " << pose_local_ids.size() << "\n";
+    FactorGraphView local_window;
 
-      solver.compute();
+    std::cout << "local opt.\n";
+
+    while (pose_local_ids.size() > window_size) {
+      std::cout << "sliding variables\n";
+      variable_ids.erase(pose_local_ids.front());
+      variable_ids.erase(vel_local_ids.front());
+      variable_ids.erase(acc_bias_local_ids.front());
+      variable_ids.erase(gyro_bias_local_ids.front());
+      pose_local_ids.pop();
+      vel_local_ids.pop();
+      acc_bias_local_ids.pop();
+      gyro_bias_local_ids.pop();
     }
-    std::cerr << solver.iterationStats() << std::endl;
+
+    local_window.addVariables(*graph, variable_ids);
+
+    // we fix the first variables to remove degrees of freedom
+    // especially important with slim factors
+    // local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    // local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+
+    solver.setGraph(local_window);
+    solver.compute();
+    Eigen::SparseMatrix<double> H;
+    solver.H().fillEigenSparse(H);
+
+    Eigen::MatrixXd H_dense = H;
+    std::cout << H_dense << std::endl;
 
     prev_pose_var  = curr_pose_var;
     prev_vel_var   = curr_vel_var;
@@ -322,7 +380,7 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
   float imu_freq = 50;
 
   // insert a gps measurement every gps_freq imu_measurements
-  int gps_freq = 50;
+  int gps_freq = 100;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   test_imu::FakeImu imu(traj, imu_freq, 102030);
