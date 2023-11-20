@@ -29,6 +29,8 @@ namespace test_imu {
     using CovType      = Eigen::Matrix<Scalar, -1, -1>;
     using CovNoiseType = Eigen::Matrix<Scalar, -1, -1>;
 
+    ImuPreintegratorBase();
+
     virtual void preintegrate(const ImuMeasurement&, Scalar dt) = 0;
     virtual void reset();
 
@@ -78,10 +80,12 @@ namespace test_imu {
                        core::Isometry3f& Tf,
                        core::Vector3f& vf);
 
+    inline std::vector<ImuMeasurement> measurements() {
+      return measurements_;
+    }
+
   protected:
     std::vector<ImuMeasurement> measurements_;
-
-    CovType sigma_ = CovType::Zero(state_dim, state_dim);
 
     // block diagonal
     // this should remain the same during operation

@@ -132,6 +132,7 @@ namespace test_imu {
 
   void ImuPreintegrator::reset() {
     ImuPreintegratorBase::reset();
+    sigma_ = 1e-10 * CovType::Identity(state_dim, state_dim);
 
     delta_p_ = Vector3::Zero();
     delta_R_ = Matrix3::Identity();
@@ -194,9 +195,11 @@ namespace test_imu {
   void ImuPreintegratorSlim::reset() {
     ImuPreintegratorBase::reset();
 
-    delta_p_ = Vector3::Zero();
-    delta_R_ = Matrix3::Identity();
-    delta_v_ = Vector3::Zero();
+    sigma_ =
+
+      delta_p_ = Vector3::Zero();
+    delta_R_   = Matrix3::Identity();
+    delta_v_   = Vector3::Zero();
 
     // allocate matrices for noise propagation
     A_.setIdentity();

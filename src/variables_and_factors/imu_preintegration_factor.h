@@ -45,8 +45,9 @@ namespace srrg2_solver {
                                     VariableVector3AD,        // bias_acc_to
                                     VariableVector3AD>;       // bias_gyro_to
 
-    using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
-    using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
+    using dMatrix3f   = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
+    using dVector3f   = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
+    using dIsometry3f = srrg2_core::Isometry3_<srrg2_core::ad::DualValuef>;
 
     using ADErrorVectorType = typename BaseType::ADErrorVectorType;
     using VariableTupleType = typename BaseType::VariableTupleType;
@@ -59,6 +60,10 @@ namespace srrg2_solver {
 
     inline void grav(const Vector3f& grav) {
       convertMatrix(grav_, grav);
+    }
+
+    inline void setOffset(const Isometry3f& offset) {
+      // convertMatrix(offset_, offset);
     }
 
     // protected:
@@ -80,6 +85,8 @@ namespace srrg2_solver {
     DualValuef dT_;
 
     dVector3f grav_;
+
+    dIsometry3f offset_ = dIsometry3f::Identity(); // imu in body
   };
 
   class ImuPreintegrationFactorSlimAD : public ADErrorFactor_<9,
@@ -96,8 +103,9 @@ namespace srrg2_solver {
                                     VariableSE3ExpMapRightAD, // pose_to
                                     VariableVector3AD>;       // vel_to
 
-    using dMatrix3f = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
-    using dVector3f = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
+    using dMatrix3f   = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
+    using dVector3f   = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
+    using dIsometry3f = srrg2_core::Isometry3_<srrg2_core::ad::DualValuef>;
 
     using ADErrorVectorType = typename BaseType::ADErrorVectorType;
     using VariableTupleType = typename BaseType::VariableTupleType;
@@ -112,6 +120,10 @@ namespace srrg2_solver {
 
     void _drawImpl(ViewerCanvasPtr canvas_) const override;
 
+    inline void setOffset(const Isometry3f& offset) {
+      convertMatrix(offset_, offset);
+    }
+
     // protected:
     dMatrix3f delta_R_;
     dVector3f delta_v_;
@@ -120,6 +132,8 @@ namespace srrg2_solver {
     DualValuef dT_;
 
     dVector3f grav_;
+
+    dIsometry3f offset_ = dIsometry3f::Identity(); // imu in body
   };
 
   class BiasErrorFactorAD : public ADErrorFactor_<6,

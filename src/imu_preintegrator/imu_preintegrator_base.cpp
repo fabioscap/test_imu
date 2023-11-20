@@ -2,11 +2,13 @@
 
 namespace test_imu {
 
+  ImuPreintegratorBase::ImuPreintegratorBase() {
+    reset();
+  }
+
   void ImuPreintegratorBase::reset() {
     measurements_.clear();
     dT_ = 0;
-
-    sigma_ = CovType::Zero(state_dim, state_dim);
 
     // nominal values for the bias
     bias_acc_  = Vector3::Zero();

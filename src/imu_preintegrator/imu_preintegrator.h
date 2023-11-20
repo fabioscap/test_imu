@@ -30,6 +30,8 @@ namespace test_imu {
     Matrix3 delta_R_ = Matrix3::Identity();
     Vector3 delta_v_ = Vector3::Zero();
 
+    CovType sigma_ = 1e-10 * CovType::Identity(state_dim, state_dim);
+
     // allocate matrices for noise propagation
     AType A_ = AType::Identity(state_dim, state_dim);
     BType B_ = BType::Zero(state_dim, noise_dim);
@@ -65,6 +67,8 @@ namespace test_imu {
     Vector3 delta_p_ = Vector3::Zero();
     Matrix3 delta_R_ = Matrix3::Identity();
     Vector3 delta_v_ = Vector3::Zero();
+
+    CovType sigma_ = 1e-10 * CovType::Identity(state_dim, state_dim);
 
     // allocate matrices for noise propagation
     AType A_ = AType::Identity(state_dim, state_dim);

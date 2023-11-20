@@ -55,7 +55,9 @@ namespace test_imu {
     DeltaManifold delta_incr_;
 
     // UKF: preallocate sigma joint input and state
-    CovJType sigma_joint_ = 1e-9 * CovJType::Identity();
+
+    CovType sigma_        = 1e-10 * CovType::Identity(state_dim, state_dim);
+    CovJType sigma_joint_ = 1e-10 * CovJType::Identity();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
@@ -98,10 +100,50 @@ namespace test_imu {
     DeltaManifold delta_incr_;
 
     // UKF: preallocate sigma joint input and state
-    CovJType sigma_joint_ = 1e-9 * CovJType::Identity();
+    CovType sigma_        = 1e-10 * CovType::Identity(state_dim, state_dim);
+    CovJType sigma_joint_ = 1e-10 * CovJType::Identity();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
+  };
+
+  class ImuPreintegratorMC : public ImuPreintegratorBase {
+  public:
+    using CovType      = ImuPreintegratorBase::CovType;
+    using CovNoiseType = ImuPreintegratorBase::CovNoiseType;
+
+    using Vector3 = ImuPreintegratorBase::Vector3;
+    using Matrix3 = ImuPreintegratorBase::Matrix3;
+
+    static constexpr int state_dim = 9;
+    static constexpr int input_dim = 6;
+    static constexpr int noise_dim = 6;
+
+    void preintegrate(const ImuMeasurement& m, Scalar dt) override;
+    // allocates a new imu measurement
+    void reset() override;
+    // clang-format off
+    const core::Matrix3f delta_R() const override;
+    const core::Vector3f delta_p() const override;
+    const core::Vector3f delta_v() const override;
+    inline const CovType& sigma() const override {
+      
+      return sigma_;}
+    // clang-format on
+
+    using DeltaManifold = ManifoldComp_<ManifoldSO3,   // dR
+                                        Euclidean_<3>, // dv
+                                        Euclidean_<3>  // dp
+                                        >;
+
+    // protected:
+    Vector3 sample_noise(const Vector3& cov_diag);
+    void compute_sigma_from_particles();
+
+    DeltaManifold delta_incr_;
+    CovType sigma_ = 1e-10 * CovType::Identity(state_dim, state_dim);
+
+    std::array<DeltaManifold, 10000> particles_;
   };
 
 } // namespace test_imu

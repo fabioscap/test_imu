@@ -9,15 +9,15 @@ namespace srrg2_solver {
 
   ImuPreintegrationFactorAD::ADErrorVectorType
   ImuPreintegrationFactorAD::operator()(ImuPreintegrationFactorAD::VariableTupleType& vars) {
-    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate();
+    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate() * offset_;
     const dMatrix3f& R_i              = T_i.linear();
     const dVector3f& p_i              = T_i.translation();
-    const dVector3f& v_i              = vars.at<1>()->adEstimate();
+    const dVector3f& v_i              = offset_.linear().transpose() * vars.at<1>()->adEstimate();
 
-    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate();
+    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate() * offset_;
     const dMatrix3f& R_j              = T_j.linear();
     const dVector3f& p_j              = T_j.translation();
-    const dVector3f& v_j              = vars.at<3>()->adEstimate();
+    const dVector3f& v_j              = offset_.linear().transpose() * vars.at<3>()->adEstimate();
 
     const dVector3f& bias_acc_i  = vars.at<4>()->adEstimate();
     const dVector3f& bias_gyro_i = vars.at<5>()->adEstimate();
@@ -76,15 +76,15 @@ namespace srrg2_solver {
 
   ImuPreintegrationFactorSlimAD::ADErrorVectorType ImuPreintegrationFactorSlimAD::operator()(
     ImuPreintegrationFactorSlimAD::VariableTupleType& vars) {
-    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate();
+    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate() * offset_;
     const dMatrix3f& R_i              = T_i.linear();
     const dVector3f& p_i              = T_i.translation();
-    const dVector3f& v_i              = vars.at<1>()->adEstimate();
+    const dVector3f& v_i              = offset_.linear().transpose() * vars.at<1>()->adEstimate();
 
-    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate();
+    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate() * offset_;
     const dMatrix3f& R_j              = T_j.linear();
     const dVector3f& p_j              = T_j.translation();
-    const dVector3f& v_j              = vars.at<3>()->adEstimate();
+    const dVector3f& v_j              = offset_.linear().transpose() * vars.at<3>()->adEstimate();
 
     ADErrorVectorType error;
 
