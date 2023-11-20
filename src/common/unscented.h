@@ -11,7 +11,7 @@ namespace test_imu {
   template <typename StateType>
   struct SigmaPoints {
     std::vector<StateType> points;
-    float wm0, wc0, wmi, wci;
+    Scalar wm0, wc0, wmi, wci;
   };
 
   class UnscentedTransform {
@@ -32,7 +32,6 @@ namespace test_imu {
     // for square root UKF (van der Merwe), keep covariance in square root form
     template <typename StateType>
     void toMeanSqrtCov(const SigmaPoints<StateType>& spoints,
-                       const CovType<StateType>& process_noise_cov_sqrt,
                        StateType& mean,
                        CovType<StateType>& cov_sqrt) const;
     template <typename StateType>
@@ -42,17 +41,17 @@ namespace test_imu {
 
     // protected:
     // mysterious parameters
-    float beta_  = 2.0f;
-    float alpha_ = 1e-3;
-    float k_     = 0;
+    Scalar beta_  = 2.0f;
+    Scalar alpha_ = 5e-3;
+    Scalar k_     = 0;
 
     WeightScheme weight_scheme_ = WeightScheme::UKF;
 
-    float cov_regularizer_ = 1e-10;
+    Scalar cov_regularizer_ = 1e-10;
 
   private:
     template <typename StateType>
-    void compute_weights_scaling(SigmaPoints<StateType>& spoints, float& cov_scaling) const;
+    void compute_weights_scaling(SigmaPoints<StateType>& spoints, Scalar& cov_scaling) const;
     template <typename StateType>
     void compute_sigma_points(const StateType& mean,
                               const CovType<StateType>& L_scaled,

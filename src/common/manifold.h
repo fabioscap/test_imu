@@ -3,8 +3,6 @@
 #include "common.h"
 #include <srrg_geometry/geometry3d.h>
 
-// TODO move as much definitions as possible into impl
-
 namespace test_imu {
 
   template <int dim>
@@ -108,7 +106,6 @@ namespace test_imu {
     using ThisType           = ManifoldComp_<Manifold, Rest...>;
     using TangentType        = TangentType_<dim>;
 
-    // I hope compiler does return value optimization
     ThisType boxplus(const TangentType& dsp) const;
 
     // convention for boxminus: compute chart around *this

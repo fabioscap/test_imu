@@ -5,16 +5,16 @@ namespace test_imu {
   // utility functions
   template <typename StateType>
   void UnscentedTransform::compute_weights_scaling(SigmaPoints<StateType>& spoints,
-                                                   float& cov_scaling) const {
+                                                   Scalar& cov_scaling) const {
     constexpr int state_dim = StateType::dim;
 
-    float& wm0 = spoints.wm0;
-    float& wc0 = spoints.wc0;
-    float& wmi = spoints.wmi;
-    float& wci = spoints.wci;
+    Scalar& wm0 = spoints.wm0;
+    Scalar& wc0 = spoints.wc0;
+    Scalar& wmi = spoints.wmi;
+    Scalar& wci = spoints.wci;
 
     if (weight_scheme_ == WeightScheme::UKF) {
-      const float lambda = alpha_ * alpha_ * (state_dim + k_) - state_dim;
+      const Scalar lambda = alpha_ * alpha_ * (state_dim + k_) - state_dim;
 
       // weights 0
       wm0 = lambda / (state_dim + lambda);
@@ -58,8 +58,8 @@ namespace test_imu {
                                                   const size_t n_iters) const {
     using TangentType  = typename StateType::TangentType;
     const auto& points = spoints.points;
-    const float wm0    = spoints.wm0;
-    const float wmi    = spoints.wmi;
+    const Scalar wm0   = spoints.wm0;
+    const Scalar wmi   = spoints.wmi;
 
     // compute chart point
     mean = points[0];
@@ -82,18 +82,17 @@ namespace test_imu {
                                      CovType<StateType>& cov) const {
     using TangentType  = typename StateType::TangentType;
     const auto& points = spoints.points;
-    const float wc0    = spoints.wc0;
-    const float wci    = spoints.wci;
+    const Scalar wc0   = spoints.wc0;
+    const Scalar wci   = spoints.wci;
     mean_from_sigma_points(spoints, mean, 0);
 
     // covariance lives in tangent space
     cov.setZero();
     TangentType err = mean.boxminus(points.at(0));
-    // cov += wc0 * err * err.transpose();
+    cov += wc0 * err * err.transpose();
 
     for (size_t i = 1; i < points.size(); ++i) {
       err = mean.boxminus(points.at(i));
-      // we can replace this with selfadjointview::rankUpdate
       cov += wci * err * err.transpose();
     }
   }
@@ -108,7 +107,7 @@ namespace test_imu {
     // points.clear();
     points.resize(2 * state_dim + 1);
 
-    float cov_scaling;
+    Scalar cov_scaling;
 
     compute_weights_scaling(spoints, cov_scaling);
     // Perform Cholesky decomposition
@@ -125,37 +124,36 @@ namespace test_imu {
 
   template <typename StateType>
   void UnscentedTransform::toMeanSqrtCov(const SigmaPoints<StateType>& spoints,
-                                         const CovType<StateType>& process_noise_cov_sqrt,
                                          StateType& mean,
                                          CovType<StateType>& cov_sqrt) const {
     constexpr int state_dim = StateType::dim;
     const auto& points      = spoints.points;
-    const float wc0         = spoints.wc0;
-    const float wci         = spoints.wci;
+    const Scalar wc0        = spoints.wc0;
+    const Scalar wci        = spoints.wci;
 
     mean_from_sigma_points(spoints, mean, 0);
 
     // QR
 
     // maybe I can preallocate this stupid matrix
-    Eigen::Matrix<Scalar, state_dim * 3, state_dim> C;
+    Eigen::Matrix<Scalar, state_dim, 2 * state_dim> C;
 
-    // put process noise
-    C.block(2 * state_dim, 0, state_dim, state_dim) = process_noise_cov_sqrt;
-
-    float wci_sqrt = std::sqrt(wci);
+    Scalar wci_sqrt = std::sqrt(wci);
     for (size_t i = 1; i < points.size(); ++i) {
-      C.block(i - 1, 0, 1, state_dim) = wci_sqrt * mean.boxminus(points.at(i)).transpose();
+      C.block(0, i - 1, state_dim, 1) = wci_sqrt * mean.boxminus(points.at(i));
     }
-    Eigen::HouseholderQR<Eigen::Matrix<Scalar, -1, -1>> qr(C);
 
-    // std::cout << C << "\n rows: " << C.rows() << " cols: " << C.cols() << "\n";
-    cov_sqrt = qr.matrixQR().triangularView<Eigen::Upper>();
+    cov_sqrt = C.transpose()
+                 .householderQr()
+                 .matrixQR()
+                 .topLeftCorner(state_dim, state_dim)
+                 .template triangularView<Eigen::Upper>();
 
     // there is no need to redo llt here, I should implement a choleskyUpdate function that
     // operates directly on cov_sqrt
     Eigen::internal::llt_inplace<Scalar, Eigen::Upper>::rankUpdate(
       cov_sqrt, mean.boxminus(points.at(0)), wc0);
+    cov_sqrt.transposeInPlace();
   }
 
   template <typename StateType>
@@ -167,7 +165,7 @@ namespace test_imu {
     auto& points = spoints.points;
     points.resize(2 * state_dim + 1);
 
-    float cov_scaling;
+    Scalar cov_scaling;
 
     compute_weights_scaling(spoints, cov_scaling);
     compute_sigma_points(mean, static_cast<CovType<StateType>>(cov_scaling * cov_sqrt), spoints);
