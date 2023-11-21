@@ -19,10 +19,10 @@ namespace test_imu {
     // allocates a new imu measurement
     void reset() override;
     // clang-format off
-    inline const core::Matrix3f delta_R() const override {return delta_R_.cast<float>();}
-    inline const core::Vector3f delta_p() const override {return delta_p_.cast<float>();}
-    inline const core::Vector3f delta_v() const override {return delta_v_.cast<float>();}
-    inline const CovType& sigma() const {return sigma_;}
+    inline const core::Matrix3f delta_R() override {return delta_R_.cast<float>();}
+    inline const core::Vector3f delta_p() override {return delta_p_.cast<float>();}
+    inline const core::Vector3f delta_v() override {return delta_v_.cast<float>();}
+    inline const CovType& sigma() override {return sigma_;}
     // clang-format on
 
     // protected:
@@ -57,10 +57,10 @@ namespace test_imu {
     // allocates a new imu measurement
     void reset() override;
     // clang-format off
-    inline const core::Matrix3f delta_R() const override {return delta_R_.cast<float>();}
-    inline const core::Vector3f delta_p() const override {return delta_p_.cast<float>();}
-    inline const core::Vector3f delta_v() const override {return delta_v_.cast<float>();}
-    inline const CovType& sigma() const {return sigma_;}
+    inline const core::Matrix3f delta_R() override {return delta_R_.cast<float>();}
+    inline const core::Vector3f delta_p() override {return delta_p_.cast<float>();}
+    inline const core::Vector3f delta_v() override {return delta_v_.cast<float>();}
+    inline const CovType& sigma() override {return sigma_;}
     // clang-format on
 
   protected:

@@ -112,7 +112,7 @@ namespace srrg2_solver {
 
     ADErrorVectorType operator()(VariableTupleType& vars);
 
-    void setMeasurement(const test_imu::ImuPreintegratorBase& preintegrator);
+    void setMeasurement(test_imu::ImuPreintegratorBase& preintegrator);
 
     inline void grav(const Vector3f& grav) {
       convertMatrix(grav_, grav);

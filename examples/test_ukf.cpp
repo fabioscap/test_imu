@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
 
   JointType x;
   CovType L;
-  ut.toMeanSqrtCov(spoints, square_root_process_cov, x, L);
+  ut.toMeanSqrtCov(spoints, x, L);
 
   std::cout << "x\n";
   std::cout << x.get<0>().data() << "\n" << x.get<1>().data() << "\n";

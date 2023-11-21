@@ -34,10 +34,10 @@ namespace test_imu {
     virtual void preintegrate(const ImuMeasurement&, Scalar dt) = 0;
     virtual void reset();
 
-    virtual const core::Matrix3f delta_R() const = 0;
-    virtual const core::Vector3f delta_v() const = 0;
-    virtual const core::Vector3f delta_p() const = 0;
-    virtual const CovType& sigma() const         = 0;
+    virtual const core::Matrix3f delta_R() = 0;
+    virtual const core::Vector3f delta_v() = 0;
+    virtual const core::Vector3f delta_p() = 0;
+    virtual const CovType& sigma()         = 0;
 
     const void setNoiseGyroscope(const core::Vector3f& v);
     const void setNoiseAccelerometer(const core::Vector3f& v);

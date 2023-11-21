@@ -100,8 +100,8 @@ namespace srrg2_solver {
     return error;
   }
 
-  void ImuPreintegrationFactorSlimAD::setMeasurement(
-    const test_imu::ImuPreintegratorBase& preintegrator) {
+  void
+  ImuPreintegrationFactorSlimAD::setMeasurement(test_imu::ImuPreintegratorBase& preintegrator) {
     convertMatrix(delta_R_, preintegrator.delta_R());
     convertMatrix(delta_v_, preintegrator.delta_v());
     convertMatrix(delta_p_, preintegrator.delta_p());

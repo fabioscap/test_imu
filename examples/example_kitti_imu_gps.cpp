@@ -80,7 +80,7 @@ bool string_in_array(const string& query, int argc, char* argv[]) {
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
   const int window_size = 8;
-  const int gps_skip    = 2; // 1 is no skips
+  const int gps_skip    = 1; // 1 is no skips
   // which variables get locally optimized
   IdSet variable_ids;
   std::queue<VariableBase::Id> pose_local_ids;
@@ -106,9 +106,11 @@ int main(int argc, char* argv[]) {
   loadKittiData(kitti_calibration, imu_measurements, gps_measurements);
 
   Solver solver;
-  // solver.param_termination_criteria.setValue(nullptr);
-  solver.param_max_iterations.pushBack(14);
-  IterationAlgorithmBasePtr alg(new IterationAlgorithmDL);
+  solver.param_termination_criteria.setValue(nullptr);
+  solver.param_max_iterations.pushBack(50);
+  IterationAlgorithmBasePtr alg(new IterationAlgorithmGN);
+  std::shared_ptr<IterationAlgorithmGN> temp = std::dynamic_pointer_cast<IterationAlgorithmGN>(alg);
+  temp->param_damping.setValue(1e3);
   solver.param_algorithm.setValue(alg);
   solver.param_verbose.setValue(true);
 
@@ -135,7 +137,7 @@ int main(int argc, char* argv[]) {
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
 
-  float info_gps = 1 / 0.07;
+  float info_gps = 1 / 0.007;
   gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
   gps_factor->setMeasurement(init_gps_pose);
   graph->addFactor(FactorBasePtr(gps_factor));
@@ -204,14 +206,14 @@ int main(int argc, char* argv[]) {
   imu_preintegrator->setNoiseBiasAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_bias_sigma));
 
-  /* imu_preintegrator->setNoiseGyroscope(
+  imu_preintegrator->setNoiseGyroscope(
     Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
   imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
     kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
   imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
     kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
   imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
-    kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma)); */
+    kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma));
 
   size_t j = 0;
   for (size_t i = 1; i < gps_measurements.size(); i = i + gps_skip) {
@@ -316,8 +318,8 @@ int main(int argc, char* argv[]) {
         bias_factor->setVariableId(2, curr_bias_acc->graphId());
         bias_factor->setVariableId(3, curr_bias_gyro->graphId());
         Matrix6f bias_sigma = Matrix6f::Identity();
-        bias_sigma.block<3, 3>(0, 0) *= kitti_calibration.accelerometer_bias_sigma;
-        bias_sigma.block<3, 3>(3, 3) *= kitti_calibration.gyroscope_bias_sigma;
+        bias_sigma.block<3, 3>(0, 0) *= dT * kitti_calibration.accelerometer_bias_sigma;
+        bias_sigma.block<3, 3>(3, 3) *= dT * kitti_calibration.gyroscope_bias_sigma;
         bias_factor->setInformationMatrix(bias_sigma.inverse());
         imu_factor->setMeasurement(*imu_preintegrator);
 
