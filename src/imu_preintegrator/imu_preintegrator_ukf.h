@@ -7,11 +7,10 @@
 
 namespace test_imu {
 
+  /* The dynamic model of the IMU does not allow the input noises to be expressed additively */
+
   class ImuPreintegratorUKF : public ImuPreintegratorBase {
   public:
-    using CovType      = ImuPreintegratorBase::CovType;
-    using CovNoiseType = ImuPreintegratorBase::CovNoiseType;
-
     using Vector3 = ImuPreintegratorBase::Vector3;
     using Matrix3 = ImuPreintegratorBase::Matrix3;
 
@@ -20,17 +19,10 @@ namespace test_imu {
 
     using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
 
-    void preintegrate(const ImuMeasurement& m, Scalar dt) override;
-    // allocates a new imu measurement
-    void reset() override;
-    // clang-format off
     const core::Matrix3f delta_R() override;
     const core::Vector3f delta_p() override;
     const core::Vector3f delta_v() override;
-    inline const CovType& sigma() override {
-      // sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
-      return sigma_;}
-    // clang-format on
+    const core::MatrixX_<float> sigma() override;
 
     using DeltaManifold = ManifoldComp_<ManifoldSO3,   // dR
                                         Euclidean_<3>, // dv
@@ -48,21 +40,26 @@ namespace test_imu {
   protected:
     DeltaManifold delta_incr_;
 
-    // UKF: preallocate sigma joint input and state
-
-    CovType sigma_        = 1e-10 * CovType::Identity(state_dim, state_dim);
-    CovJType sigma_joint_ = 1e-10 * CovJType::Identity();
-    core::Vector_<Scalar, noise_dim> sigma_noise_diag_ = core::Vector_<Scalar, noise_dim>::Zero();
+    CovJType sigma_joint_                              = 1e-10 * CovJType::Identity();
+    core::Vector_<Scalar, input_dim> input_noise_diag_ = core::Vector_<Scalar, input_dim>::Zero();
+    core::Vector_<Scalar, input_dim> bias_noise_diag_  = core::Vector_<Scalar, input_dim>::Zero();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
+    UnscentedTransform ut_;
+
+    // bias jacobians
+    BiasJacobians bias_J_;
+
+    void preintegrate_(const ImuMeasurement& m, Scalar dt) override;
+    void reset_() override;
+
+    // dirty flag true iff delta_incr_ and sigma_joint_  are syncd with spoints
+    bool is_updated_ = true;
   };
 
   class ImuPreintegratorUKFSlim : public ImuPreintegratorBase {
   public:
-    using CovType      = ImuPreintegratorBase::CovType;
-    using CovNoiseType = ImuPreintegratorBase::CovNoiseType;
-
     using Vector3 = ImuPreintegratorBase::Vector3;
     using Matrix3 = ImuPreintegratorBase::Matrix3;
 
@@ -71,17 +68,10 @@ namespace test_imu {
 
     using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
 
-    void preintegrate(const ImuMeasurement& m, Scalar dt) override;
-    // allocates a new imu measurement
-    void reset() override;
-    // clang-format off
     const core::Matrix3f delta_R() override;
     const core::Vector3f delta_p() override;
     const core::Vector3f delta_v() override;
-    inline const CovType& sigma() override {
-      // sigma_ = sigma_joint_.block<state_dim, state_dim>(0, 0);
-      return sigma_;}
-    // clang-format on
+    const core::MatrixX_<float> sigma() override;
 
     using DeltaManifold = ManifoldComp_<ManifoldSO3,   // dR
                                         Euclidean_<3>, // dv
@@ -90,17 +80,24 @@ namespace test_imu {
                                         Euclidean_<3>  // input gyroscope
                                         >;
 
-    // protected:
+  protected:
     DeltaManifold delta_incr_;
 
-    // UKF: preallocate sigma joint input and state
-    CovType sigma_            = 1e-10 * CovType::Identity(state_dim, state_dim);
-    CovJType sigma_joint_     = 1e-10 * CovJType::Identity();
-    CovNoiseType sigma_noise_ = 1e-3 * CovNoiseType::Identity(input_dim, input_dim);
-    CovNoiseType scaling_     = CovNoiseType::Identity(input_dim, input_dim);
+    CovJType sigma_joint_                              = 1e-10 * CovJType::Identity();
+    core::Vector_<Scalar, input_dim> input_noise_diag_ = core::Vector_<Scalar, input_dim>::Zero();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
+    UnscentedTransform ut_;
+
+    // bias jacobians
+    BiasJacobians bias_J_;
+
+    void preintegrate_(const ImuMeasurement& m, Scalar dt) override;
+    void reset_() override;
+
+    // dirty flag true iff delta_incr_ and sigma_joint_  are syncd with spoints
+    bool is_updated_ = true;
   };
 
 } // namespace test_imu

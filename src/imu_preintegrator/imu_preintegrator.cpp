@@ -84,7 +84,7 @@ namespace test_imu {
   }
 
   void ImuPreintegrator::reset_() {
-    sigma_ = 1e-10 * CovType::Identity(state_dim, state_dim);
+    sigma_ = 1e-10 * CovType::Identity();
 
     delta_p_ = Vector3::Zero();
     delta_R_ = Matrix3::Identity();
