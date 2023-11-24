@@ -37,6 +37,8 @@ namespace test_imu {
                                         */
                                         >;
 
+    const BiasJacobians* biasJacobians() const override;
+
   protected:
     DeltaManifold delta_incr_;
 

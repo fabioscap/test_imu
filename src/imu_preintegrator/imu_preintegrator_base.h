@@ -4,6 +4,27 @@
 
 namespace test_imu {
 
+  // this holds the estimate jacobians wrt the biases.
+  struct BiasJacobians {
+    using Scalar = test_imu::Scalar; // float or double
+
+    using Vector3 = core::Vector3_<Scalar>;
+    using Matrix3 = core::Matrix3_<Scalar>;
+
+    // bias correction
+    Matrix3 dR_db_gyro = Matrix3::Zero();
+    Matrix3 dv_db_acc  = Matrix3::Zero();
+    Matrix3 dv_db_gyro = Matrix3::Zero();
+    Matrix3 dp_db_acc  = Matrix3::Zero();
+    Matrix3 dp_db_gyro = Matrix3::Zero();
+
+    void update(const Matrix3& deltaR,
+                const Matrix3& acc_skew,
+                const Matrix3& dR,
+                const Matrix3& Jr,
+                Scalar dt);
+  };
+
   class ImuPreintegratorBase {
   public:
     using Scalar = test_imu::Scalar; // float or double
@@ -19,15 +40,18 @@ namespace test_imu {
     virtual const core::Vector3f delta_p()      = 0;
     virtual const core::MatrixX_<float> sigma() = 0;
 
-    inline const void setNoiseGyroscope(const core::Vector3f& v);
-    inline const void setNoiseAccelerometer(const core::Vector3f& v);
-    inline const void setNoiseBiasGyroscope(const core::Vector3f& v);
-    inline const void setNoiseBiasAccelerometer(const core::Vector3f& v);
-    inline const void setBiasAcc(const core::Vector3f& v);
-    inline const void setBiasGyro(const core::Vector3f& v);
+    const void setNoiseGyroscope(const core::Vector3f& v);
+    const void setNoiseAccelerometer(const core::Vector3f& v);
+    const void setNoiseBiasGyroscope(const core::Vector3f& v);
+    const void setNoiseBiasAccelerometer(const core::Vector3f& v);
+    const void setBiasAcc(const core::Vector3f& v);
+    const void setBiasGyro(const core::Vector3f& v);
+
+    const core::Vector3f bias_gyro() const;
+    const core::Vector3f bias_acc() const;
 
     std::vector<ImuMeasurement> measurements();
-    inline const float dT() const;
+    const float dT() const;
 
     // forward step. does side effect on its arguments
     static void f(Matrix3& delta_R,
@@ -41,6 +65,10 @@ namespace test_imu {
                        const core::Vector3f& vi,
                        core::Isometry3f& Tf,
                        core::Vector3f& vf);
+
+    inline virtual const BiasJacobians* biasJacobians() const {
+      return 0;
+    } // don't estimate biases by default
 
   protected:
     /* override these three functions */
@@ -63,25 +91,6 @@ namespace test_imu {
     Matrix3 dR_, Jr_;
     Vector3 acc_c_;
     float dt_;
-  };
-
-  // this holds the estimate jacobians wrt the biases.
-  struct BiasJacobians {
-    using Matrix3 = ImuPreintegratorBase::Matrix3;
-    using Vector3 = ImuPreintegratorBase::Vector3;
-
-    // bias correction
-    Matrix3 dR_db_gyro = Matrix3::Zero();
-    Matrix3 dv_db_acc  = Matrix3::Zero();
-    Matrix3 dv_db_gyro = Matrix3::Zero();
-    Matrix3 dp_db_acc  = Matrix3::Zero();
-    Matrix3 dp_db_gyro = Matrix3::Zero();
-
-    void update(const Matrix3& deltaR,
-                const Matrix3& acc_skew,
-                const Matrix3& dR,
-                const Matrix3& Jr,
-                Scalar dt);
   };
 
 } // namespace test_imu

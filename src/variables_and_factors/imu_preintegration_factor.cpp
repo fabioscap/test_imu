@@ -59,16 +59,17 @@ namespace srrg2_solver {
     convertMatrix(delta_R_, preintegrator.delta_R());
     convertMatrix(delta_v_, preintegrator.delta_v());
     convertMatrix(delta_p_, preintegrator.delta_p());
-
     convertMatrix(bias_acc_nom_, preintegrator.bias_acc());
     convertMatrix(bias_gyro_nom_, preintegrator.bias_gyro());
 
-    convertMatrix(dR_db_gyro_, preintegrator.dR_db_gyro());
-    convertMatrix(dv_db_acc_, preintegrator.dv_db_acc());
-    convertMatrix(dv_db_gyro_, preintegrator.dv_db_gyro());
-    convertMatrix(dp_db_acc_, preintegrator.dp_db_acc());
-    convertMatrix(dp_db_gyro_, preintegrator.dp_db_gyro());
-
+    const test_imu::BiasJacobians* bias_J_ptr = preintegrator.biasJacobians();
+    if (bias_J_ptr) {
+      convertMatrix(dR_db_gyro_, bias_J_ptr->dR_db_gyro);
+      convertMatrix(dv_db_acc_, bias_J_ptr->dv_db_acc);
+      convertMatrix(dv_db_gyro_, bias_J_ptr->dv_db_gyro);
+      convertMatrix(dp_db_acc_, bias_J_ptr->dp_db_acc);
+      convertMatrix(dp_db_gyro_, bias_J_ptr->dp_db_gyro);
+    }
     dT_ = DualValuef(preintegrator.dT());
     setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
     // setInformationMatrix(Eigen::MatrixXf::Identity(15, 15));

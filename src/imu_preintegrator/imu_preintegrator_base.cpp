@@ -68,6 +68,14 @@ namespace test_imu {
     return dT_;
   }
 
+  const core::Vector3f ImuPreintegratorBase::bias_gyro() const {
+    return bias_gyro_.cast<float>();
+  }
+
+  const core::Vector3f ImuPreintegratorBase::bias_acc() const {
+    return bias_acc_.cast<float>();
+  }
+
   std::vector<ImuMeasurement> ImuPreintegratorBase::measurements() {
     return measurements_;
   }

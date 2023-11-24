@@ -25,6 +25,8 @@ namespace test_imu {
     inline const core::MatrixX_<float> sigma() override {return sigma_.cast<float>();}
     // clang-format on
 
+    const BiasJacobians* biasJacobians() const override;
+
   protected:
     Vector3 delta_p_ = Vector3::Zero();
     Matrix3 delta_R_ = Matrix3::Identity();
