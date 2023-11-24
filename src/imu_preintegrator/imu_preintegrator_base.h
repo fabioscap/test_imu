@@ -6,107 +6,82 @@ namespace test_imu {
 
   class ImuPreintegratorBase {
   public:
-    // the data type used mainly for covariance propagation
-    using Scalar = test_imu::Scalar;
+    using Scalar = test_imu::Scalar; // float or double
 
     using Vector3 = core::Vector3_<Scalar>;
     using Matrix3 = core::Matrix3_<Scalar>;
 
-    static constexpr int state_dim = 15;
-    static constexpr int noise_dim = 12;
+    void preintegrate(const ImuMeasurement&, Scalar dt);
+    void reset();
 
-    static constexpr int PHIidx = 0;  // phi
-    static constexpr int Vidx   = 3;  // vel
-    static constexpr int Pidx   = 6;  // pos
-    static constexpr int BAidx  = 9;  // bias acc
-    static constexpr int BGidx  = 12; // bias gyro
+    virtual const core::Matrix3f delta_R()      = 0;
+    virtual const core::Vector3f delta_v()      = 0;
+    virtual const core::Vector3f delta_p()      = 0;
+    virtual const core::MatrixX_<float> sigma() = 0;
 
-    static constexpr int NGidx  = 0; // noise gyro
-    static constexpr int NAidx  = 3; // noise acc
-    static constexpr int NBGidx = 6; // bias random walk noise gyro
-    static constexpr int NBAidx = 9; // bias random walk noise acc
+    inline const void setNoiseGyroscope(const core::Vector3f& v);
+    inline const void setNoiseAccelerometer(const core::Vector3f& v);
+    inline const void setNoiseBiasGyroscope(const core::Vector3f& v);
+    inline const void setNoiseBiasAccelerometer(const core::Vector3f& v);
+    inline const void setBiasAcc(const core::Vector3f& v);
+    inline const void setBiasGyro(const core::Vector3f& v);
 
-    using CovType      = Eigen::Matrix<Scalar, -1, -1>;
-    using CovNoiseType = Eigen::Matrix<Scalar, -1, -1>;
+    std::vector<ImuMeasurement> measurements();
+    inline const float dT() const;
 
-    ImuPreintegratorBase();
-
-    virtual void preintegrate(const ImuMeasurement&, Scalar dt) = 0;
-    virtual void reset();
-
-    virtual const core::Matrix3f delta_R() = 0;
-    virtual const core::Vector3f delta_v() = 0;
-    virtual const core::Vector3f delta_p() = 0;
-    virtual const CovType& sigma()         = 0;
-
-    const void setNoiseGyroscope(const core::Vector3f& v);
-    const void setNoiseAccelerometer(const core::Vector3f& v);
-    const void setNoiseBiasGyroscope(const core::Vector3f& v);
-    const void setNoiseBiasAccelerometer(const core::Vector3f& v);
-
-    inline const core::Vector3f bias_acc() const {
-      return bias_acc_.cast<float>();
-    }
-    inline const core::Vector3f bias_gyro() const {
-      return bias_gyro_.cast<float>();
-    }
-    inline const core::Matrix3f dR_db_gyro() const {
-      return dR_db_gyro_.cast<float>();
-    }
-    inline const core::Matrix3f dv_db_acc() const {
-      return dv_db_acc_.cast<float>();
-    }
-    inline const core::Matrix3f dv_db_gyro() const {
-      return dv_db_gyro_.cast<float>();
-    }
-    inline const core::Matrix3f dp_db_acc() const {
-      return dp_db_acc_.cast<float>();
-    }
-    inline const core::Matrix3f dp_db_gyro() const {
-      return dp_db_gyro_.cast<float>();
-    }
-    inline const float dT() const {
-      return dT_;
-    }
-    inline const void setBiasAcc(const core::Vector3f& v) {
-      bias_acc_ = v.cast<Scalar>();
-    }
-    inline const void setBiasGyro(const core::Vector3f& v) {
-      bias_gyro_ = v.cast<Scalar>();
-    }
+    // forward step. does side effect on its arguments
+    static void f(Matrix3& delta_R,
+                  Vector3& delta_v,
+                  Vector3& delta_p,
+                  const Matrix3& dR,  // unbiased
+                  const Vector3& acc, // unbiased
+                  float dt);
 
     void getPrediction(const core::Isometry3f& Ti,
                        const core::Vector3f& vi,
                        core::Isometry3f& Tf,
                        core::Vector3f& vf);
 
-    inline std::vector<ImuMeasurement> measurements() {
-      return measurements_;
-    }
-
   protected:
-    std::vector<ImuMeasurement> measurements_;
+    /* override these three functions */
+    virtual void preintegrate_(const ImuMeasurement&, Scalar dt) = 0;
+    virtual void reset_()                                        = 0;
 
-    // block diagonal
-    // this should remain the same during operation
-    CovNoiseType sigma_noise_ = 1e-3 * CovNoiseType::Identity(noise_dim, noise_dim);
-    // we need discretize the noise covariances
-    // see Optimal state estimation 8.1
-    // or https://github.com/borglab/gtsam/blob/develop/doc/ImuFactor.pdf
-    // preallocate matrix for scaling
-    CovNoiseType scaling_ = CovNoiseType::Identity(noise_dim, noise_dim);
+    std::vector<ImuMeasurement> measurements_;
+    Scalar dT_; // total preintegration time
+
+    Vector3 acc_noise_       = Vector3::Zero();
+    Vector3 gyro_noise_      = Vector3::Zero();
+    Vector3 bias_acc_noise_  = Vector3::Zero();
+    Vector3 bias_gyro_noise_ = Vector3::Zero();
 
     // nominal values for the bias
     Vector3 bias_acc_  = Vector3::Zero();
     Vector3 bias_gyro_ = Vector3::Zero();
 
-    // bias correction
-    Matrix3 dR_db_gyro_ = Matrix3::Zero();
-    Matrix3 dv_db_acc_  = Matrix3::Zero();
-    Matrix3 dv_db_gyro_ = Matrix3::Zero();
-    Matrix3 dp_db_acc_  = Matrix3::Zero();
-    Matrix3 dp_db_gyro_ = Matrix3::Zero();
-
-    Scalar dT_; // total preintegration time
+    // some intermediate quantities that are used in two or more update functions
+    Matrix3 dR_, Jr_;
+    Vector3 acc_c_;
+    float dt_;
   };
+
+  // this holds the estimate jacobians wrt the biases.
+  struct BiasJacobians {
+    using Matrix3 = ImuPreintegratorBase::Matrix3;
+    using Vector3 = ImuPreintegratorBase::Vector3;
+
+    // bias correction
+    Matrix3 dR_db_gyro = Matrix3::Zero();
+    Matrix3 dv_db_acc  = Matrix3::Zero();
+    Matrix3 dv_db_gyro = Matrix3::Zero();
+    Matrix3 dp_db_acc  = Matrix3::Zero();
+    Matrix3 dp_db_gyro = Matrix3::Zero();
+
+    void update(const Matrix3& deltaR,
+                const Matrix3& acc_skew,
+                const Matrix3& dR,
+                const Matrix3& Jr,
+                Scalar dt);
+  };
+
 } // namespace test_imu

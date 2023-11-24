@@ -1,4 +1,4 @@
 add_subdirectory(common)
 add_subdirectory(synthetic)
 add_subdirectory(imu_preintegrator)
-add_subdirectory(variables_and_factors)
+#add_subdirectory(variables_and_factors)

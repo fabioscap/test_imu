@@ -19,10 +19,10 @@ namespace test_imu {
     ManifoldBase_(const DataType& data) : data_(data) {
     }
 
-    inline void setData(const DataType& data) {
-      data_ = data;
-    }
     inline const DataType& data() const {
+      return data_;
+    }
+    inline DataType& data() {
       return data_;
     }
 

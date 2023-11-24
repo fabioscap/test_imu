@@ -17,7 +17,6 @@ namespace test_imu {
 
     static constexpr int state_dim = 15;
     static constexpr int input_dim = 6;
-    static constexpr int noise_dim = 12;
 
     using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
 
@@ -45,19 +44,15 @@ namespace test_imu {
                                         Euclidean_<3>  // nbg
                                         */
                                         >;
-    // DEBUG function
-    void getPrediction(const core::Isometry3f& Ti,
-                       const core::Vector3f& vi,
-                       core::Isometry3f& Tf,
-                       core::Vector3f& vf);
 
-    // protected:
+  protected:
     DeltaManifold delta_incr_;
 
     // UKF: preallocate sigma joint input and state
 
     CovType sigma_        = 1e-10 * CovType::Identity(state_dim, state_dim);
     CovJType sigma_joint_ = 1e-10 * CovJType::Identity();
+    core::Vector_<Scalar, noise_dim> sigma_noise_diag_ = core::Vector_<Scalar, noise_dim>::Zero();
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
@@ -73,7 +68,6 @@ namespace test_imu {
 
     static constexpr int state_dim = 9;
     static constexpr int input_dim = 6;
-    static constexpr int noise_dim = 6;
 
     using CovJType = core::MatrixN_<ImuPreintegratorBase::Scalar, state_dim + input_dim>;
 
@@ -100,8 +94,10 @@ namespace test_imu {
     DeltaManifold delta_incr_;
 
     // UKF: preallocate sigma joint input and state
-    CovType sigma_        = 1e-10 * CovType::Identity(state_dim, state_dim);
-    CovJType sigma_joint_ = 1e-10 * CovJType::Identity();
+    CovType sigma_            = 1e-10 * CovType::Identity(state_dim, state_dim);
+    CovJType sigma_joint_     = 1e-10 * CovJType::Identity();
+    CovNoiseType sigma_noise_ = 1e-3 * CovNoiseType::Identity(input_dim, input_dim);
+    CovNoiseType scaling_     = CovNoiseType::Identity(input_dim, input_dim);
 
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;

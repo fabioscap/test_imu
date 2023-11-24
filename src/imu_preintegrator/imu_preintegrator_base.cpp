@@ -1,38 +1,33 @@
 #include "imu_preintegrator_base.h"
 
 namespace test_imu {
-
-  ImuPreintegratorBase::ImuPreintegratorBase() {
-    reset();
+  void ImuPreintegratorBase::preintegrate(const ImuMeasurement& m, Scalar dt) {
+    measurements_.push_back(m);
+    dT_ += dt;
+    preintegrate_(m, dt);
   }
 
   void ImuPreintegratorBase::reset() {
     measurements_.clear();
     dT_ = 0;
-
-    // nominal values for the bias
-    bias_acc_  = Vector3::Zero();
-    bias_gyro_ = Vector3::Zero();
-
-    // bias correction
-    dR_db_gyro_ = Matrix3::Zero();
-    dv_db_acc_  = Matrix3::Zero();
-    dv_db_gyro_ = Matrix3::Zero();
-    dp_db_acc_  = Matrix3::Zero();
-    dp_db_gyro_ = Matrix3::Zero();
+    reset_();
   }
 
-  const void ImuPreintegratorBase::setNoiseGyroscope(const core::Vector3f& v) {
-    sigma_noise_.block<3, 3>(NGidx, NGidx) = v.cast<Scalar>().asDiagonal();
-  }
-  const void ImuPreintegratorBase::setNoiseAccelerometer(const core::Vector3f& v) {
-    sigma_noise_.block<3, 3>(NAidx, NAidx) = v.cast<Scalar>().asDiagonal();
-  }
-  const void ImuPreintegratorBase::setNoiseBiasGyroscope(const core::Vector3f& v) {
-    sigma_noise_.block<3, 3>(NBGidx, NBGidx) = v.cast<Scalar>().asDiagonal();
-  }
-  const void ImuPreintegratorBase::setNoiseBiasAccelerometer(const core::Vector3f& v) {
-    sigma_noise_.block<3, 3>(NBAidx, NBAidx) = v.cast<Scalar>().asDiagonal();
+  void ImuPreintegratorBase::f(Matrix3& delta_R,
+                               Vector3& delta_v,
+                               Vector3& delta_p,
+                               const Matrix3& dR,
+                               const Vector3& acc,
+                               float dt) {
+    Vector3 dva = delta_R * (acc) *dt;
+    delta_p += (delta_v + 0.5 * dva) * dt;
+
+    // update the velocity
+    delta_v += dva;
+
+    // update orientation
+    delta_R *= dR;
+    core::fixRotation(delta_R);
   }
 
   void ImuPreintegratorBase::getPrediction(const core::Isometry3f& Ti,
@@ -47,5 +42,50 @@ namespace test_imu {
 
     Tf.linear()      = Ti.linear() * delta_R();
     Tf.translation() = Ti.linear() * delta_p() + Ti.translation() + T * vi;
+  }
+
+  const void ImuPreintegratorBase::setNoiseGyroscope(const core::Vector3f& v) {
+    gyro_noise_ = (v.cast<Scalar>());
+  }
+  const void ImuPreintegratorBase::setNoiseAccelerometer(const core::Vector3f& v) {
+    acc_noise_ = (v.cast<Scalar>());
+  }
+  const void ImuPreintegratorBase::setNoiseBiasGyroscope(const core::Vector3f& v) {
+    bias_gyro_noise_ = (v.cast<Scalar>());
+  }
+  const void ImuPreintegratorBase::setNoiseBiasAccelerometer(const core::Vector3f& v) {
+    bias_acc_noise_ = (v.cast<Scalar>());
+  }
+
+  const void ImuPreintegratorBase::setBiasAcc(const core::Vector3f& v) {
+    bias_acc_ = v.cast<Scalar>();
+  }
+  const void ImuPreintegratorBase::setBiasGyro(const core::Vector3f& v) {
+    bias_gyro_ = v.cast<Scalar>();
+  }
+
+  const float ImuPreintegratorBase::dT() const {
+    return dT_;
+  }
+
+  std::vector<ImuMeasurement> ImuPreintegratorBase::measurements() {
+    return measurements_;
+  }
+
+  void BiasJacobians::update(const Matrix3& deltaR,
+                             const Matrix3& acc_skew,
+                             const Matrix3& dR,
+                             const Matrix3& Jr,
+                             Scalar dt) {
+    dp_db_acc += dv_db_acc * dt - 0.5 * deltaR * dt * dt;
+    dp_db_gyro += dv_db_gyro * dt - 0.5 * deltaR * acc_skew * dR_db_gyro * dt * dt;
+
+    // Velocity
+    dv_db_acc -= deltaR * dt;
+    dv_db_gyro -= deltaR * acc_skew * dR_db_gyro * dt;
+
+    // Rotation
+    // remember that dR_j_j = I
+    dR_db_gyro = dR.transpose() * dR_db_gyro - Jr * dt;
   }
 } // namespace test_imu
