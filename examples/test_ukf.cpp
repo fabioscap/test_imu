@@ -16,8 +16,8 @@ using CovType = UnscentedTransform::CovType<JointType>;
 JointType f(const JointType& x) {
   JointType x_next;
 
-  x_next.get<0>().setData(x.get<0>().data());
-  x_next.get<1>().setData(x.get<0>().data() * x.get<1>().data());
+  x_next.get<0>().data() = (x.get<0>().data());
+  x_next.get<1>().data() = (x.get<0>().data() * x.get<1>().data());
   // x_next.get<1>().setData(x.get<1>().data());
 
   return x_next;
@@ -35,8 +35,8 @@ int main(int argc, char* argv[]) {
   JointType s0;
   CovType cov = 0.05 * CovType::Identity();
 
-  s0.get<0>().setData(Ry<Scalar>(0.));
-  s0.get<1>().setData(core::Vector3_<Scalar>(1.0, 1.0, 1.0));
+  s0.get<0>().data() = (Ry<Scalar>(0.));
+  s0.get<1>().data() = (core::Vector3_<Scalar>(1.0, 1.0, 1.0));
 
   SigmaPoints<JointType> spoints;
 

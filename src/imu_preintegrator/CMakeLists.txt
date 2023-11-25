@@ -4,5 +4,5 @@ imu_preintegrator.cpp
 imu_preintegrator_ukf.cpp
 )
 
-target_link_libraries(imu_preintegrator
+target_link_libraries(imu_preintegrator PUBLIC
                       common)
