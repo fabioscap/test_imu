@@ -100,6 +100,11 @@ namespace test_imu {
 
     // dirty flag true iff delta_incr_ and sigma_joint_  are syncd with spoints
     bool is_updated_ = true;
+
+    // builds sigma_joint_ and geenrates sigma points
+    void toUnscented_(float dt);
+    // reconstruct mean and covariance and sets is_updated_ to true
+    void toMeanCov_();
   };
 
 } // namespace test_imu
