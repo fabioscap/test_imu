@@ -8,7 +8,8 @@ namespace srrg2_solver {
 
   using namespace srrg2_core;
   //! @brief pose pose error factor ad that uses quaternion vertices
-  class GpsFactorAD : public ADErrorFactor_<3, VariableSE3ExpMapRightAD> {
+  class GpsFactorAD : public ADErrorFactor_<3, VariableSE3ExpMapRightAD>,
+                      public MeasurementOwnerEigen_<Vector3f> {
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     using BaseType          = ADErrorFactor_<3, VariableSE3ExpMapRightAD>;
@@ -16,20 +17,21 @@ namespace srrg2_solver {
     using ADErrorVectorType = typename BaseType::ADErrorVectorType;
     //! @brief how to compute the error
     ADErrorVectorType operator()(VariableTupleType& vars) override {
-      ADErrorVectorType error = vars.at<0>()->adEstimate().translation() - _pose_measurement;
+      ADErrorVectorType error = vars.at<0>()->adEstimate().translation() - _pose_measurement_ad;
       return error;
     }
 
     //! @brief converts the measurement in dual values
     void setMeasurement(const Vector3f& gps_measurement_) {
-      convertMatrix(_pose_measurement, gps_measurement_);
+      convertMatrix(_pose_measurement_ad, gps_measurement_);
+      MeasurementOwnerEigen_<Vector3f>::setMeasurement(gps_measurement_);
     }
 
     void _drawImpl(ViewerCanvasPtr canvas_) const override;
 
   protected:
     //! @brief measurement
-    Vector3_<DualValuef> _pose_measurement;
+    Vector3_<DualValuef> _pose_measurement_ad;
   };
 
 } // namespace srrg2_solver
