@@ -167,9 +167,9 @@ void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
   file.close();
 
   graph->setSerializationLevel(-1);
-  graph->write("/workspace/src/test_imu/prova.boss");
+  graph->write("/workspace/src/test_imu/gtsam_converted.boss");
   std::cerr << "graph written in "
-            << "/workspace/src/test_imu/prova.boss" << std::endl;
+            << "/workspace/src/test_imu/gtsam_converted.boss" << std::endl;
   return;
 }
 

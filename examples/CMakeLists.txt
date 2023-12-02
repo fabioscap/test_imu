@@ -1,3 +1,5 @@
+add_definitions(-DNCLT_DATA_FOLDER="${PROJECT_SOURCE_DIR}/data/nclt")
+
 add_executable(integrate_trajectory integrate_trajectory.cpp)
 target_link_libraries(integrate_trajectory 
                       srrg2_solver_core_library
@@ -83,6 +85,24 @@ target_link_libraries(nclt
                       srrg2_solver_types3d_library
                       ${catkin_LIBRARIES}
 )
+
+
+add_executable(compute_rpe compute_rpe.cpp)
+target_link_libraries(compute_rpe
+                      preintegration_factor
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+                      ${catkin_LIBRARIES}
+)
+
+
+add_executable(nclt_boss_converter nclt_boss_converter.cpp)
+target_link_libraries(nclt_boss_converter
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+                      ${catkin_LIBRARIES}
+)
+
 
 
 

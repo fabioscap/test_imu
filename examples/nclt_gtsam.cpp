@@ -21,11 +21,14 @@
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/slam/dataset.h>
 
+#include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 
 #include <cstring>
 #include <fstream>
 #include <iostream>
+
+#include "common/common.h"
 
 using namespace std;
 using namespace gtsam;
@@ -149,6 +152,12 @@ int main(int argc, char* argv[]) {
   double g         = -9.8;
   auto w_coriolis  = Vector3::Zero(); // zero vector
 
+  LevenbergMarquardtParams parameters;
+  parameters.setDiagonalDamping(false);
+  parameters.setlambdaInitial(1e3);
+  parameters.setlambdaFactor(1.0);
+  parameters.setMaxIterations(50);
+
   // Configure noise models
   auto noise_model_gps =
     noiseModel::Diagonal::Precisions((Vector6() << Vector3::Constant(0), sigmas.gps).finished());
@@ -259,7 +268,11 @@ int main(int argc, char* argv[]) {
     values.insert(current_vel_key, current_velocity_global);
     values.insert(current_bias_key, current_bias);
 
-    LevenbergMarquardtOptimizer optimizer(graph, values);
+    // Stop iterating once the change in error between steps is less than this value
+    parameters.relativeErrorTol = 1e-5;
+    // Do not perform more than N ite
+
+    LevenbergMarquardtOptimizer optimizer(graph, values, parameters);
     Values optimizedValues = optimizer.optimize();
     values                 = optimizedValues;
 
@@ -271,7 +284,6 @@ int main(int argc, char* argv[]) {
   // Save results to file
   printf("\nWriting results to file...\n");
   FILE* fp_out = fopen(output_filename.c_str(), "w+");
-  fprintf(fp_out, "#time(s),x(m),y(m),z(m),qx,qy,qz,qw,gt_x(m),gt_y(m),gt_z(m)\n");
 
   for (size_t i = first_gps; i < gps_measurements.size() / 8; i = i + gps_skip) {
     auto pose_key = X(i);
@@ -282,8 +294,12 @@ int main(int argc, char* argv[]) {
     auto velocity = values.at<Vector3>(vel_key);
     auto bias     = values.at<imuBias::ConstantBias>(bias_key);
 
-    auto pose_quat = pose.rotation().toQuaternion();
-    auto gps       = gps_measurements[i].position;
+    auto pose_euler = pose.rotation().rpy();
+
+    using namespace test_imu;
+
+    std::cout << pose.rotation() << "\n"
+              << Rx(pose_euler.x()) * Ry(pose_euler.y()) * Rz(pose_euler.z()) << "\n\n";
 
     cout << "State at #" << i << endl;
     cout << "Pose:" << endl << pose << endl;
@@ -291,18 +307,14 @@ int main(int argc, char* argv[]) {
     cout << "Bias:" << endl << bias << endl;
 
     fprintf(fp_out,
-            "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
+            "%f,%f,%f,%f,%f,%f,%f\n",
             gps_measurements[i].time,
             pose.x(),
             pose.y(),
             pose.z(),
-            pose_quat.x(),
-            pose_quat.y(),
-            pose_quat.z(),
-            pose_quat.w(),
-            gps(0),
-            gps(1),
-            gps(2));
+            pose_euler.x(),
+            pose_euler.y(),
+            pose_euler.z());
   }
 
   fclose(fp_out);

@@ -35,12 +35,12 @@ struct GpsMeasurement {
 };
 
 struct Sigmas {
-  float acc       = 0.01f;
+  float acc       = 0.001f;
   float gyro      = 0.000175f;
-  float bias_acc  = 0.000000167f;
-  float bias_gyro = 2.91e-009f;
+  float bias_acc  = 0.000167f;
+  float bias_gyro = 2.91e-006f;
 
-  float gps = 10.0f;
+  Vector3f gps = Vector3f(1, 1, 9);
 } sigmas;
 
 bool string_in_array(const string& query, int argc, char* argv[]) {
@@ -55,10 +55,12 @@ void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
                   vector<GpsMeasurement>& gps_measurements);
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
-  const int window_size = 32;
-  const int gps_skip    = 16;
+  const int window_size = 16;
+  const int gps_skip    = 4;
 
-  const int first_gps = 249;
+  const int first_gps = 4;
+
+  ofstream prediction_error("prediction_error.txt");
 
   // which variables get locally optimized
   IdSet variable_ids;
@@ -73,8 +75,8 @@ int main(int argc, char* argv[]) {
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
   // inspect covariances
-  ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
-  ofstream det_dump("/workspace/src/test_imu/determinant.txt");
+  // ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
+  // ofstream det_dump("/workspace/src/test_imu/determinant.txt");
 
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
@@ -84,10 +86,13 @@ int main(int argc, char* argv[]) {
   loadNCLTData(imu_measurements, gps_measurements);
 
   Solver solver;
-  // solver.param_termination_criteria.setValue(nullptr);
-  solver.param_max_iterations.pushBack(15);
-  IterationAlgorithmBasePtr alg(new IterationAlgorithmLM);
+  solver.param_termination_criteria.setValue(nullptr);
+  solver.param_max_iterations.pushBack(50);
+  IterationAlgorithmBasePtr alg(new IterationAlgorithmGN);
+  std::shared_ptr<IterationAlgorithmGN> temp = std::dynamic_pointer_cast<IterationAlgorithmGN>(alg);
+  temp->param_damping.setValue(1e3);
   solver.param_algorithm.setValue(alg);
+  solver.param_verbose.setValue(true);
   FactorGraphPtr graph(new FactorGraph);
 
   using VarPoseImuType = VariableSE3ExpMapRightAD;
@@ -97,25 +102,29 @@ int main(int argc, char* argv[]) {
   using FactorBiasType = BiasErrorFactorAD;
 
   // initialization
+  // hash map for variable timestamps
+  std::vector<std::pair<double, size_t>> variable_timestamps;
 
-  Isometry3f imu_in_gps; // imu in gps_rtk
-  imu_in_gps.setIdentity();
-  imu_in_gps.translation() << 0.13, 0.18, 0.53;
+  Isometry3f imu_in_body; // imu in gps_rtk
+  imu_in_body.setIdentity();
+  imu_in_body.translation() << -0.11, -0.18, -0.71;
 
   const Vector3f& init_gps_pose = gps_measurements.at(first_gps).position;
   Isometry3f init_pose          = Isometry3f::Identity();
   init_pose.translation()       = init_gps_pose;
+  // init_pose.linear()            = test_imu::Rx<float>(M_PI);
 
   VarPoseImuType* prev_pose_var = new VarPoseImuType();
   prev_pose_var->setEstimate(init_pose);
   prev_pose_var->setGraphId(0);
   graph->addVariable(VariableBasePtr(prev_pose_var));
+  variable_timestamps.push_back(
+    std::make_pair(gps_measurements.at(first_gps).time, prev_pose_var->graphId()));
 
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
 
-  float info_gps = 1 / sigmas.gps;
-  gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
+  gps_factor->setInformationMatrix(sigmas.gps.asDiagonal().inverse());
   gps_factor->setMeasurement(init_gps_pose);
   graph->addFactor(FactorBasePtr(gps_factor));
 
@@ -177,8 +186,9 @@ int main(int argc, char* argv[]) {
   imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(sigmas.bias_acc));
 
   size_t j = 0;
-  for (size_t i = first_gps + 1; i < gps_measurements.size() / 2; i = i + gps_skip) {
-    int prev_idx = (i == 1) ? 0 : i - gps_skip;
+  for (size_t i = first_gps + 1; i < gps_measurements.size() / 8; i = i + gps_skip) {
+    std::cout << "gps_idx: " << i << "\n";
+    int prev_idx = (i == first_gps + 1) ? first_gps : i - gps_skip;
 
     const double t_previous = gps_measurements.at(prev_idx).time;
     const double gps_time   = gps_measurements.at(i).time;
@@ -188,6 +198,7 @@ int main(int argc, char* argv[]) {
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
 
+    std::cout << "integrating IMU measurements in [" << t_previous << "," << gps_time << "]\n";
     while (j < imu_measurements.size() && imu_measurements.at(j).timestamp <= gps_time) {
       if (imu_measurements.at(j).timestamp >= t_previous) {
         imu_preintegrator->preintegrate(imu_measurements.at(j),
@@ -204,15 +215,26 @@ int main(int argc, char* argv[]) {
     // 3 pose to imu
     // 4 vel to imu
 
+    if (imu_preintegrator->measurements().size() < 3)
+      continue;
+
     const Vector3f curr_gps_pose = gps_measurements.at(i).position;
     Isometry3f curr_pose         = Isometry3f::Identity();
     curr_pose.translation()      = curr_gps_pose;
     curr_pose.linear()           = prev_pose_var->estimate().linear();
 
+    float pred_err =
+      (curr_gps_pose - prev_pose_var->estimate().translation() + prev_vel_var->estimate() * dT)
+        .norm();
+    // compare gps position with constant velocity prediction
+    prediction_error << pred_err << "\n";
+
     VarPoseImuType* curr_pose_var = new VarPoseImuType();
     curr_pose_var->setEstimate(curr_pose);
     curr_pose_var->setGraphId(graph_id++);
     graph->addVariable(VariableBasePtr(curr_pose_var));
+    variable_timestamps.push_back(
+      std::make_pair(gps_measurements.at(i).time, curr_pose_var->graphId()));
     pose_local_ids.push(curr_pose_var->graphId());
     variable_ids.insert(curr_pose_var->graphId());
     // std::cout << "adding pose variable with id: " << curr_pose_var->graphId() << "\n";
@@ -243,10 +265,10 @@ int main(int argc, char* argv[]) {
 
     std::cout << "imu preintegrator has absorbed: " << imu_preintegrator->measurements().size()
               << " measurements.\n";
-    if (use_imu && imu_preintegrator->measurements().size() > 0) {
+    if (use_imu) {
       if (!use_slim) {
         ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
-        imu_factor->setOffset(imu_in_gps);
+        imu_factor->setOffset(imu_in_body);
         imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
@@ -264,7 +286,7 @@ int main(int argc, char* argv[]) {
 
       } else {
         ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
-        imu_factor->setOffset(imu_in_gps);
+        imu_factor->setOffset(imu_in_body);
         imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
@@ -288,17 +310,21 @@ int main(int argc, char* argv[]) {
       }
     }
     FactorGpsType* gps_factor = new FactorGpsType();
+    RobustifierBase* clamp    = new RobustifierClamp();
+    clamp->param_chi_threshold.setValue(1000.0);
+    // gps_factor->setRobustifier(clamp);
+
     gps_factor->setVariableId(0, curr_pose_var->graphId());
 
-    gps_factor->setInformationMatrix(Matrix3f::Identity() * info_gps);
+    gps_factor->setInformationMatrix(sigmas.gps.asDiagonal().inverse());
     gps_factor->setMeasurement(curr_gps_pose);
 
     if (use_gps) {
       graph->addFactor(FactorBasePtr(gps_factor));
     }
-    cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
-    // cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
-    det_dump << imu_preintegrator->sigma().determinant() << "\n";
+    // cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
+    //  cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
+    // det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
     // local optimization
@@ -319,13 +345,15 @@ int main(int argc, char* argv[]) {
 
     // we fix the first variables to remove degrees of freedom
     // especially important with slim factors
-    // local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    // local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    // local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    // local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+    local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
 
-    solver.setGraph(local_window);
-    solver.compute();
+    if (use_imu) {
+      solver.setGraph(local_window);
+      solver.compute();
+    }
 
     std::cout << solver.iterationStats() << std::endl;
 
@@ -345,35 +373,49 @@ int main(int argc, char* argv[]) {
       v->setStatus(VariableBase::Active);
     }
   }
-  solver.setGraph(graph);
-  solver.compute();
 
-  std::cout << "final optimization" << std::endl;
-  std::cout << solver.iterationStats() << std::endl;
   const std::string boss_graph_filename = "/workspace/src/test_imu/imu_gps_optimized.boss";
 
-  solver.saveGraph(boss_graph_filename);
-  std::cout << "graph written in " << boss_graph_filename << std::endl;
+  if (!use_imu) {
+    graph->setSerializationLevel(-1);
+    graph->write(boss_graph_filename);
+  } else {
+    solver.setGraph(graph);
+    solver.compute();
+    std::cout << "final optimization" << std::endl;
+    std::cout << solver.iterationStats() << std::endl;
 
-  ofstream dumper;
-  dumper.open("/workspace/src/test_imu/output.txt");
+    solver.saveGraph(boss_graph_filename);
+    std::cout << "graph written in " << boss_graph_filename << std::endl;
+  }
+  // dumper.close();
+  // cov_dump.close();
+  // det_dump.close();
 
-  for (size_t i = 0; i < graph->variables().size(); ++i) {
-    const VarPoseImuType* curr_pose_var = dynamic_cast<const VarPoseImuType*>(graph->variable(i));
-    if (curr_pose_var == nullptr) {
-      continue;
+  std::ofstream fp_out(std::string(PROJECT_FOLDER) + "/nclt.csv");
+  if (!fp_out)
+    throw std::runtime_error("cannot open output csv file");
+
+  for (size_t i = 0; i < variable_timestamps.size(); ++i) {
+    auto pair      = variable_timestamps.at(i);
+    double time    = pair.first;
+    size_t pose_id = pair.second;
+
+    VariableBase* var        = graph->variables().find(pose_id).value();
+    VarPoseImuType* pose_var = dynamic_cast<VarPoseImuType*>(var);
+    if (!pose_var) {
+      throw std::runtime_error("error fetching variable");
     }
 
-    const auto& curr_pose            = curr_pose_var->estimate();
-    const Vector3f& pose_translation = curr_pose.translation();
-    dumper << pose_translation.x() << " " << pose_translation.y() << " " << pose_translation.z()
-           << " "
+    Eigen::Isometry3f pose = pose_var->estimate();
+    auto rpy               = pose.rotation().eulerAngles(0, 1, 2);
+
+    fp_out << time << ", " << pose.translation().x() << ", " << pose.translation().y() << ", "
+           << pose.translation().z() << ", " << rpy.x() << ", " << rpy.y() << ", " << rpy.z()
            << "\n";
   }
-  dumper.close();
 
-  cov_dump.close();
-  det_dump.close();
+  fp_out.close();
 }
 
 void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
@@ -410,6 +452,14 @@ void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
                              gps_filename + ".");
   }
 
+  Eigen::Vector3f body_offset = Eigen::Vector3f::Zero();
+  if (gps_filename == "gt.csv") {
+    body_offset << +0.24, 0, +1.24;
+  } else if (gps_filename == "gps.csv") {
+    body_offset << 0, +0.25, +0.49;
+  }
+  std::cout << "gps body offset: " << body_offset.transpose() << "\n";
+
   double lat0 = (42.293227f / 180.0f) * M_PI;
   double lng0 = (-83.709657 / 180.0f) * M_PI;
   double alt0 = 270.0;
@@ -431,16 +481,28 @@ void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
     double lat, lng, alt;
 
     int fix_mode;
+    if (gps_filename != "gt.csv") {
+      sscanf(
+        line.c_str(), "%lf,%d,%*d,%lf,%lf,%lf,%*f,%*f", &meas.time, &fix_mode, &lat, &lng, &alt);
 
-    sscanf(line.c_str(), "%lf,%d,%*d,%lf,%lf,%lf,%*f,%*f", &meas.time, &fix_mode, &lat, &lng, &alt);
-
-    if (fix_mode == 3) {
-      // convert using formulas in pdf
-      meas.position.x() = sin(lat - lat0) * rns;
-      meas.position.y() = sin(lng - lng0) * rew * cos(lat0);
-      meas.position.z() = alt0 - alt;
-      meas.time *= 1e-6;
-      gps_measurements.push_back(meas);
+      if (fix_mode >= 3) {
+        // convert using formulas in pdf
+        meas.position.x() = sin(lat - lat0) * rns;
+        meas.position.y() = sin(lng - lng0) * rew * cos(lat0);
+        meas.position.z() = alt0 - alt;
+      } else {
+        continue;
+      }
+    } else {
+      sscanf(line.c_str(),
+             "%lf,%f,%f,%f,%*f,%*f,%*f",
+             &meas.time,
+             &meas.position.x(),
+             &meas.position.y(),
+             &meas.position.z());
     }
+    meas.position += body_offset;
+    meas.time *= 1e-6;
+    gps_measurements.push_back(meas);
   }
 }
