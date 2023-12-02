@@ -43,5 +43,9 @@ include_directories(
 # this is important. it tells cmake where to look for libraries
 link_directories(${catkin_LIBRARY_DIRS})
 
+
+add_definitions(-DPROJECT_FOLDER="${PROJECT_SOURCE_DIR}")
+
+
 add_subdirectory(src)
 add_subdirectory(examples)
