@@ -119,24 +119,21 @@ void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
     }
 
     // Check if there are at least 8 columns
-    if (tokens.size() < 8) {
+    if (tokens.size() < 7) {
       std::cerr << "Error: CSV file does not have enough columns." << std::endl;
       return;
     }
 
     // Extract the relevant columns
-    float x  = std::stod(tokens[1]);
-    float y  = std::stod(tokens[2]);
-    float z  = std::stod(tokens[3]);
-    float qx = std::stod(tokens[4]);
-    float qy = std::stod(tokens[5]);
-    float qz = std::stod(tokens[6]);
-    float qw = std::stod(tokens[7]);
-
+    float x                = std::stod(tokens[1]);
+    float y                = std::stod(tokens[2]);
+    float z                = std::stod(tokens[3]);
+    float a                = std::stod(tokens[4]);
+    float b                = std::stod(tokens[5]);
+    float c                = std::stod(tokens[6]);
     Eigen::Isometry3f pose = Eigen::Isometry3f::Identity();
-
-    pose.translation() = Vector3f(x, y, z);
-    pose.linear()      = Eigen::Quaternionf(qw, qx, qy, qz).normalized().toRotationMatrix();
+    pose.translation()     = Vector3f(x, y, z);
+    pose.linear()          = test_imu::Rx(a) * test_imu::Ry(b) * test_imu::Rz(c);
     if (i == 0) {
       prev_pose->setEstimate(pose);
       ++i;
