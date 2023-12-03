@@ -410,9 +410,9 @@ int main(int argc, char* argv[]) {
     Eigen::Isometry3f pose = pose_var->estimate();
     auto rpy               = pose.rotation().eulerAngles(0, 1, 2);
 
-    fp_out << time << ", " << pose.translation().x() << ", " << pose.translation().y() << ", "
-           << pose.translation().z() << ", " << rpy.x() << ", " << rpy.y() << ", " << rpy.z()
-           << "\n";
+    fp_out << std::fixed << time << ", " << pose.translation().x() << ", " << pose.translation().y()
+           << ", " << pose.translation().z() << ", " << rpy.x() << ", " << rpy.y() << ", "
+           << rpy.z() << "\n";
   }
 
   fp_out.close();

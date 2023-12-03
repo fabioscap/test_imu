@@ -96,15 +96,6 @@ target_link_libraries(compute_rpe
 )
 
 
-add_executable(nclt_boss_converter nclt_boss_converter.cpp)
-target_link_libraries(nclt_boss_converter
-                      srrg2_solver_core_library
-                      srrg2_solver_types3d_library
-                      ${catkin_LIBRARIES}
-)
-
-
-
 
 find_package(GTSAMCMakeTools)
 find_package(GTSAM REQUIRED) # Uses installed package
