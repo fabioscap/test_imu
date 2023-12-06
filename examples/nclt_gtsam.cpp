@@ -225,9 +225,10 @@ int main(int argc, char* argv[]) {
 
     while (j < imu_measurements.size() && imu_measurements[j].time <= t) {
       if (imu_measurements[j].time >= t_previous) {
-        current_summarized_measurement->integrateMeasurement(
-          imu_measurements[j].accelerometer, imu_measurements[j].gyroscope, imu_measurements[j].dt);
-        included_imu_measurement_count++;
+        current_summarized_measurement->integrateMeasurement(imu_measurements[j].accelerometer,
+                                                             imu_measurements[j].gyroscope,
+                                                             imu_measurements.at(j + 1).time -
+                                                               imu_measurements.at(j).time);
       }
       j++;
     }
