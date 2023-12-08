@@ -24,6 +24,64 @@ namespace srrg2_solver {
   protected:
   };
 
+  class ImuPreintegrationFactor : public ErrorFactor_<15,
+                                                      VariableSE3ExpMapRight, // pose_from
+                                                      VariableVector3,        // vel_from
+                                                      VariableSE3ExpMapRight, // pose_to
+                                                      VariableVector3,        // vel_to
+                                                      VariableVector3,        // bias_acc_from
+                                                      VariableVector3,        // bias_gyro_from
+                                                      VariableVector3,        // bias_acc_to
+                                                      VariableVector3>,       // bias_gyro_to,
+                                  public ImuPreintegrationFactorBase {
+  public:
+    using BaseType = ErrorFactor_<15,
+                                  VariableSE3ExpMapRight, // pose_from
+                                  VariableVector3,        // vel_from
+                                  VariableSE3ExpMapRight, // pose_to
+                                  VariableVector3,        // vel_to
+                                  VariableVector3,        // bias_acc_from
+                                  VariableVector3,        // bias_gyro_from
+                                  VariableVector3,        // bias_acc_to
+                                  VariableVector3>;       // bias_gyro_to
+
+    void errorAndJacobian(bool error_only_ = false) override;
+
+    void setMeasurement(test_imu::ImuPreintegratorBase& preintegrator);
+
+    void _drawImpl(ViewerCanvasPtr canvas_) const override;
+
+    inline void grav(const Vector3f& grav) {
+      grav_ = grav;
+    }
+
+    inline void setOffset(const Isometry3f& offset) {
+      offset_ = offset;
+    }
+
+    // protected:
+    Matrix3f delta_R_;
+    Vector3f delta_v_;
+    Vector3f delta_p_;
+
+    // nominal value for the biases
+    Vector3f bias_acc_nom_;
+    Vector3f bias_gyro_nom_;
+
+    // bias correction matrices
+    Matrix3f dR_db_gyro_;
+    Matrix3f dv_db_acc_;
+    Matrix3f dv_db_gyro_;
+    Matrix3f dp_db_acc_;
+    Matrix3f dp_db_gyro_;
+
+    DualValuef dT_;
+
+    Vector3f grav_;
+
+    Isometry3f offset_ = Isometry3f::Identity(); // imu in body
+  };
+
   class ImuPreintegrationFactorAD : public ADErrorFactor_<15,
                                                           VariableSE3ExpMapRightAD, // pose_from
                                                           VariableVector3AD,        // vel_from
@@ -63,7 +121,7 @@ namespace srrg2_solver {
     }
 
     inline void setOffset(const Isometry3f& offset) {
-      // convertMatrix(offset_, offset);
+      convertMatrix(offset_, offset);
     }
 
     // protected:
@@ -89,11 +147,68 @@ namespace srrg2_solver {
     dIsometry3f offset_ = dIsometry3f::Identity(); // imu in body
   };
 
+  class ImuPreintegrationFactorSlim : public ErrorFactor_<9,
+                                                          VariableSE3ExpMapRight, // pose_from
+                                                          VariableVector3,        // vel_from
+                                                          VariableSE3ExpMapRight, // pose_to
+                                                          VariableVector3,        // vel_to
+                                                          VariableVector3,        // bias_from
+                                                          VariableVector3>,
+
+                                      public ImuPreintegrationFactorBase {
+  public:
+    using BaseType = ErrorFactor_<9,
+                                  VariableSE3ExpMapRight, // pose_from
+                                  VariableVector3,        // vel_from
+                                  VariableSE3ExpMapRight, // pose_to
+                                  VariableVector3,        // vel_to
+                                  VariableVector3,        // bias_from
+                                  VariableVector3>;
+
+    void errorAndJacobian(bool error_only_ = false) override;
+
+    void setMeasurement(test_imu::ImuPreintegratorBase& preintegrator);
+
+    inline void grav(const Vector3f& grav) {
+      grav_ = grav;
+    }
+
+    void _drawImpl(ViewerCanvasPtr canvas_) const override;
+
+    inline void setOffset(const Isometry3f& offset) {
+      offset_ = offset;
+    }
+
+    // protected:
+    Matrix3f delta_R_;
+    Vector3f delta_v_;
+    Vector3f delta_p_;
+
+    // nominal value for the biases
+    Vector3f bias_acc_nom_;
+    Vector3f bias_gyro_nom_;
+
+    // bias correction matrices
+    Matrix3f dR_db_gyro_;
+    Matrix3f dv_db_acc_;
+    Matrix3f dv_db_gyro_;
+    Matrix3f dp_db_acc_;
+    Matrix3f dp_db_gyro_;
+
+    float dT_;
+
+    Vector3f grav_;
+
+    Isometry3f offset_ = Isometry3f::Identity(); // imu in body
+  };
+
   class ImuPreintegrationFactorSlimAD : public ADErrorFactor_<9,
                                                               VariableSE3ExpMapRightAD, // pose_from
                                                               VariableVector3AD,        // vel_from
                                                               VariableSE3ExpMapRightAD, // pose_to
-                                                              VariableVector3AD>,       // vel_to
+                                                              VariableVector3AD,        // vel_to
+                                                              VariableVector3AD,        // bias_from
+                                                              VariableVector3AD>,
 
                                         public ImuPreintegrationFactorBase {
   public:
@@ -101,7 +216,9 @@ namespace srrg2_solver {
                                     VariableSE3ExpMapRightAD, // pose_from
                                     VariableVector3AD,        // vel_from
                                     VariableSE3ExpMapRightAD, // pose_to
-                                    VariableVector3AD>;       // vel_to
+                                    VariableVector3AD,        // vel_to
+                                    VariableVector3AD,        // bias_from
+                                    VariableVector3AD>;
 
     using dMatrix3f   = srrg2_core::MatrixN_<srrg2_core::ad::DualValuef, 3>;
     using dVector3f   = srrg2_core::Vector_<srrg2_core::ad::DualValuef, 3>;
@@ -129,11 +246,40 @@ namespace srrg2_solver {
     dVector3f delta_v_;
     dVector3f delta_p_;
 
+    // nominal value for the biases
+    dVector3f bias_acc_nom_;
+    dVector3f bias_gyro_nom_;
+
+    // bias correction matrices
+    dMatrix3f dR_db_gyro_;
+    dMatrix3f dv_db_acc_;
+    dMatrix3f dv_db_gyro_;
+    dMatrix3f dp_db_acc_;
+    dMatrix3f dp_db_gyro_;
+
     DualValuef dT_;
 
     dVector3f grav_;
 
     dIsometry3f offset_ = dIsometry3f::Identity(); // imu in body
+  };
+
+  class BiasErrorFactor : public ErrorFactor_<6,
+                                              VariableVector3, // bias acc from
+                                              VariableVector3, // bias_gyro_from
+                                              VariableVector3, // bias acc to
+                                              VariableVector3> // bias_gyro_to
+
+  {
+  public:
+    using BaseType = ErrorFactor_<6,
+                                  VariableVector3,  // bias acc from
+                                  VariableVector3,  // bias_gyro_from
+                                  VariableVector3,  // bias acc to
+                                  VariableVector3>; // bias_gyro_to
+    void errorAndJacobian(bool error_only_ = false) override;
+
+    inline void _drawImpl(ViewerCanvasPtr canvas_) const override{};
   };
 
   class BiasErrorFactorAD : public ADErrorFactor_<6,

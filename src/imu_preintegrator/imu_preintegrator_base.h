@@ -67,7 +67,7 @@ namespace test_imu {
                        core::Vector3f& vf);
 
     inline virtual const BiasJacobians* biasJacobians() const {
-      return 0;
+      return &bias_J_;
     } // don't estimate biases by default
 
   protected:
@@ -91,6 +91,8 @@ namespace test_imu {
     Matrix3 dR_, Jr_;
     Vector3 acc_c_;
     float dt_;
+
+    BiasJacobians bias_J_;
   };
 
 } // namespace test_imu

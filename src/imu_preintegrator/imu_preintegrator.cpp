@@ -96,8 +96,6 @@ namespace test_imu {
     // allocate matrices for noise propagation
     A_.setIdentity();
     B_.setZero();
-
-    bias_J_ = BiasJacobians();
   }
 
   void ImuPreintegratorSlim::preintegrate_(const ImuMeasurement& m, Scalar dt) {
@@ -129,6 +127,7 @@ namespace test_imu {
 
     sigma_ = A_ * sigma_ * A_.transpose() + B_ * sigma_noise_diag_.asDiagonal() * B_.transpose();
 
+    bias_J_.update(delta_R_, acc_skew, dR, Jr, dt);
     f(delta_R_, delta_v_, delta_p_, dR, acc_c, dt);
   }
 

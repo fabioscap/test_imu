@@ -40,8 +40,6 @@ namespace test_imu {
     BType B_ = BType::Zero(state_dim, noise_dim);
     //
 
-    BiasJacobians bias_J_;
-
     void preintegrate_(const ImuMeasurement& m, Scalar dt) override;
     void reset_() override;
   };

@@ -10,6 +10,8 @@ namespace test_imu {
   void ImuPreintegratorBase::reset() {
     measurements_.clear();
     dT_ = 0;
+
+    bias_J_ = BiasJacobians();
     reset_();
   }
 
@@ -95,5 +97,13 @@ namespace test_imu {
     // Rotation
     // remember that dR_j_j = I
     dR_db_gyro = dR.transpose() * dR_db_gyro - Jr * dt;
+
+    /* std::cout << "--- bias update: ---\n";
+    std::cout << dp_db_acc << "\n";
+    std::cout << dp_db_gyro << "\n";
+    std::cout << dv_db_acc << "\n";
+    std::cout << dv_db_gyro << "\n";
+    std::cout << dR_db_gyro << "\n";
+    std::cout << "--------------------\n"; */
   }
 } // namespace test_imu

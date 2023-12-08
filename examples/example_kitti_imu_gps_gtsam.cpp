@@ -25,6 +25,8 @@
 #include <fstream>
 #include <iostream>
 
+#include "common/common.h"
+
 using namespace std;
 using namespace gtsam;
 
@@ -348,7 +350,6 @@ int main(int argc, char* argv[]) {
   // Save results to file
   printf("\nWriting results to file...\n");
   FILE* fp_out = fopen(output_filename.c_str(), "w+");
-  fprintf(fp_out, "#time(s),x(m),y(m),z(m),qx,qy,qz,qw,gt_x(m),gt_y(m),gt_z(m)\n");
 
   result = isam.calculateEstimate();
   for (size_t i = first_gps_pose; i < gps_measurements.size() - 1; i++) {
@@ -360,8 +361,12 @@ int main(int argc, char* argv[]) {
     auto velocity = result.at<Vector3>(vel_key);
     auto bias     = result.at<imuBias::ConstantBias>(bias_key);
 
-    auto pose_quat = pose.rotation().toQuaternion();
-    auto gps       = gps_measurements[i].position;
+    auto pose_euler = pose.rotation().rpy();
+
+    using namespace test_imu;
+
+    std::cout << pose.rotation() << "\n"
+              << Rx(pose_euler.x()) * Ry(pose_euler.y()) * Rz(pose_euler.z()) << "\n\n";
 
     cout << "State at #" << i << endl;
     cout << "Pose:" << endl << pose << endl;
@@ -369,18 +374,14 @@ int main(int argc, char* argv[]) {
     cout << "Bias:" << endl << bias << endl;
 
     fprintf(fp_out,
-            "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
+            "%f,%f,%f,%f,%f,%f,%f\n",
             gps_measurements[i].time,
             pose.x(),
             pose.y(),
             pose.z(),
-            pose_quat.x(),
-            pose_quat.y(),
-            pose_quat.z(),
-            pose_quat.w(),
-            gps(0),
-            gps(1),
-            gps(2));
+            pose_euler.x(),
+            pose_euler.y(),
+            pose_euler.z());
   }
 
   fclose(fp_out);

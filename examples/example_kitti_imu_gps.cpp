@@ -2,7 +2,7 @@
 #include <iostream>
 
 #define _USE_MATH_DEFINES
-#include "variables_and_factors/gps_factor_ad.h"
+#include "variables_and_factors/gps_factor.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 
 #include "variables_and_factors/instances.h"
@@ -110,17 +110,19 @@ int main(int argc, char* argv[]) {
   solver.param_max_iterations.pushBack(50);
   IterationAlgorithmBasePtr alg(new IterationAlgorithmGN);
   std::shared_ptr<IterationAlgorithmGN> temp = std::dynamic_pointer_cast<IterationAlgorithmGN>(alg);
-  temp->param_damping.setValue(1e3);
+  temp->param_damping.setValue(5e2);
   solver.param_algorithm.setValue(alg);
   solver.param_verbose.setValue(true);
 
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType = VariableSE3ExpMapRightAD;
-  using VarVelImuType  = VariableVector3AD;
-  using ImuBiasVar     = VariableVector3AD;
-  using FactorGpsType  = GpsFactorAD;
-  using FactorBiasType = BiasErrorFactorAD;
+  using VarPoseImuType    = VariableSE3ExpMapRight;
+  using VarVelImuType     = VariableVector3;
+  using ImuBiasVar        = VariableVector3;
+  using FactorGpsType     = GpsFactor;
+  using FactorBiasType    = BiasErrorFactor;
+  using FactorImuType     = ImuPreintegrationFactor;
+  using FactorImuSlimType = ImuPreintegrationFactorSlim;
 
   // initialization
 
@@ -206,14 +208,14 @@ int main(int argc, char* argv[]) {
   imu_preintegrator->setNoiseBiasAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_bias_sigma));
 
-  imu_preintegrator->setNoiseGyroscope(
-    Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
-  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
-    kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
-  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
-    kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
-  imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
-    kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma));
+  /*   imu_preintegrator->setNoiseGyroscope(
+      Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
+    imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
+      kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
+    imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
+      kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
+    imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
+      kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma)); */
 
   size_t j = 0;
   for (size_t i = 1; i < gps_measurements.size(); i = i + gps_skip) {
@@ -284,10 +286,14 @@ int main(int argc, char* argv[]) {
 
     std::cout << "imu preintegrator has absorbed: " << imu_preintegrator->measurements().size()
               << " measurements.\n";
+
+    // todo remove this
+    void* imu_factor_ptr;
     if (use_imu && imu_preintegrator->measurements().size() > 0) {
+      // std::cout << imu_preintegrator->sigma() << "\n";
       if (!use_slim) {
         std::cout << "full factor\n";
-        ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
+        FactorImuType* imu_factor = new FactorImuType();
         imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
@@ -299,17 +305,21 @@ int main(int argc, char* argv[]) {
 
         imu_factor->setVariableId(6, curr_bias_acc->graphId());
         imu_factor->setVariableId(7, curr_bias_gyro->graphId());
+
         imu_factor->setMeasurement(*imu_preintegrator);
 
         graph->addFactor(FactorBasePtr(imu_factor));
+        imu_factor_ptr = imu_factor;
       } else {
         std::cout << "slim factor\n";
-        ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
+        FactorImuSlimType* imu_factor = new FactorImuSlimType();
         imu_factor->grav(Vector3f(0.f, 0.f, -9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
         imu_factor->setVariableId(2, curr_pose_var->graphId());
         imu_factor->setVariableId(3, curr_vel_var->graphId());
+        imu_factor->setVariableId(4, prev_bias_acc->graphId());
+        imu_factor->setVariableId(5, prev_bias_gyro->graphId());
 
         FactorBiasType* bias_factor = new FactorBiasType();
         bias_factor->setVariableId(0, prev_bias_acc->graphId());
@@ -318,13 +328,14 @@ int main(int argc, char* argv[]) {
         bias_factor->setVariableId(2, curr_bias_acc->graphId());
         bias_factor->setVariableId(3, curr_bias_gyro->graphId());
         Matrix6f bias_sigma = Matrix6f::Identity();
-        bias_sigma.block<3, 3>(0, 0) *= dT * kitti_calibration.accelerometer_bias_sigma;
-        bias_sigma.block<3, 3>(3, 3) *= dT * kitti_calibration.gyroscope_bias_sigma;
+        bias_sigma.block<3, 3>(0, 0) *= std::sqrt(dT) * kitti_calibration.accelerometer_bias_sigma;
+        bias_sigma.block<3, 3>(3, 3) *= std::sqrt(dT) * kitti_calibration.gyroscope_bias_sigma;
         bias_factor->setInformationMatrix(bias_sigma.inverse());
         imu_factor->setMeasurement(*imu_preintegrator);
 
         graph->addFactor(FactorBasePtr(bias_factor));
         graph->addFactor(FactorBasePtr(imu_factor));
+        imu_factor_ptr = imu_factor;
       }
     }
 
@@ -371,6 +382,16 @@ int main(int argc, char* argv[]) {
 
     solver.setGraph(local_window);
     solver.compute();
+    std::cout << "imu factor jacobian: \n";
+    if (use_slim) {
+      std::cout << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian().rows() << "x"
+                << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian().cols() << "\n";
+      std::cout << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian() << "\n";
+    } else {
+      std::cout << ((FactorImuType*) imu_factor_ptr)->totalJacobian().rows() << "x"
+                << ((FactorImuType*) imu_factor_ptr)->totalJacobian().cols() << "\n";
+      std::cout << ((FactorImuType*) imu_factor_ptr)->totalJacobian() << "\n";
+    }
 
     std::cout << solver.iterationStats() << std::endl;
 
@@ -397,7 +418,8 @@ int main(int argc, char* argv[]) {
   std::cout << solver.iterationStats() << std::endl;
   const std::string boss_graph_filename = example_folder + "/imu_gps_optimized.boss";
 
-  solver.saveGraph(boss_graph_filename);
+  graph->setSerializationLevel(-1);
+  graph->write(boss_graph_filename);
   std::cout << "graph written in " << boss_graph_filename << std::endl;
 
   ofstream dumper;

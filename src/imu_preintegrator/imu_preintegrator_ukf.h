@@ -50,9 +50,6 @@ namespace test_imu {
     SigmaPoints<DeltaManifold> spoints;
     UnscentedTransform ut_;
 
-    // bias jacobians
-    BiasJacobians bias_J_;
-
     void preintegrate_(const ImuMeasurement& m, Scalar dt) override;
     void reset_() override;
 
@@ -91,9 +88,6 @@ namespace test_imu {
     // container for sigma points
     SigmaPoints<DeltaManifold> spoints;
     UnscentedTransform ut_;
-
-    // bias jacobians
-    BiasJacobians bias_J_;
 
     void preintegrate_(const ImuMeasurement& m, Scalar dt) override;
     void reset_() override;

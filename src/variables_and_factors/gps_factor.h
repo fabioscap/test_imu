@@ -7,7 +7,16 @@
 namespace srrg2_solver {
 
   using namespace srrg2_core;
-  //! @brief pose pose error factor ad that uses quaternion vertices
+
+  class GpsFactor : public ErrorFactor_<3, VariableSE3ExpMapRight>,
+                    public MeasurementOwnerEigen_<Vector3f> {
+  public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    using BaseType = ADErrorFactor_<3, VariableSE3ExpMapRightAD>;
+    void errorAndJacobian(bool error_only_);
+    void _drawImpl(ViewerCanvasPtr canvas_) const override;
+  };
+
   class GpsFactorAD : public ADErrorFactor_<3, VariableSE3ExpMapRightAD>,
                       public MeasurementOwnerEigen_<Vector3f> {
   public:

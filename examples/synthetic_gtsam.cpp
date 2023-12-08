@@ -30,6 +30,8 @@
 
 #include "common/common.h"
 
+#include "synthetic/synthetic.h"
+
 using namespace std;
 using namespace gtsam;
 
@@ -52,111 +54,95 @@ struct GpsMeasurement {
 const string output_filename = "/workspace/src/test_imu/nclt_gtsam.csv";
 
 struct Sigmas {
-  float acc       = 0.001f;
-  float gyro      = 0.000175f;
+  float acc       = 0.00175f;
+  float gyro      = 0.00175f;
   float bias_acc  = 0.000167f;
-  float bias_gyro = 2.91e-006f;
+  float bias_gyro = 0.000167f;
 
-  Vector3 gps = Vector3(1, 1, 9);
+  float gps = 0.0002f;
 } sigmas;
 
-void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
-                  vector<GpsMeasurement>& gps_measurements) {
-  const std::string data_folder("/workspace/src/test_imu/data/nclt");
-  string imu_filename = "ms25.csv";
-  string gps_filename = "gps_rtk.csv";
-  ifstream imu_file(data_folder + "/" + imu_filename);
-  if (!imu_file) {
-    throw std::runtime_error("loadNCLTData: cannot open IMU data file at" + data_folder + "/" +
-                             imu_filename + ".");
-  }
+void generateData(std::vector<GpsMeasurement>& gps_measurements,
+                  std::vector<ImuMeasurement>& imu_measurements,
+                  Vector3& vel_zero) {
+  using TrajectoryType = test_imu::SE3EightTrajectory;
 
-  string line;
-  while (std::getline(imu_file, line)) {
+  // total time of trajectory
+  float T = 300;
+
+  // imu measurements /sec
+  float imu_freq = 50;
+
+  // insert a gps measurement every gps_freq imu_measurements
+  int gps_freq = 100;
+
+  std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
+  test_imu::FakeImu imu(traj, imu_freq, 102030);
+
+  imu.std_acc()       = sigmas.acc;
+  imu.std_gyro()      = sigmas.gyro;
+  imu.std_bias_acc()  = sigmas.bias_acc;
+  imu.std_bias_gyro() = sigmas.bias_gyro;
+
+  std::vector<std::tuple<test_imu::ImuMeasurement, Eigen::Vector3f, Eigen::Isometry3f>> data;
+  imu.generateData(data, true);
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+  std::normal_distribution<double> distr(0, sigmas.gps);
+
+  imu_measurements.clear();
+  gps_measurements.clear();
+
+  for (size_t i = 0; i < data.size(); ++i) {
+    // add the imu measurements to the vector
+    test_imu::ImuMeasurement meas_tmp = std::get<0>(data.at(i));
     ImuMeasurement meas;
-
-    sscanf(line.c_str(),
-           "%lf,%*f,%*f,%*f,%lf,%lf,%lf,%lf,%lf,%lf",
-           &meas.time,
-           &meas.accelerometer.x(),
-           &meas.accelerometer.y(),
-           &meas.accelerometer.z(),
-           &meas.gyroscope.x(),
-           &meas.gyroscope.y(),
-           &meas.gyroscope.z());
-    meas.time *= 1e-6;
-    if (imu_measurements.size() == 0) {
-    } else if (imu_measurements.size() == 1) {
-      meas.dt                   = meas.time - imu_measurements.at(0).time;
-      imu_measurements.at(0).dt = meas.dt;
-    } else {
-      meas.dt = meas.time - imu_measurements.at(imu_measurements.size() - 2).time;
-    }
-
+    meas.dt = 1 / imu_freq;
+    meas.accelerometer << meas_tmp.acceleration.cast<double>();
+    meas.gyroscope << meas_tmp.angular_vel.cast<double>();
+    meas.time = meas_tmp.timestamp;
     imu_measurements.push_back(meas);
-  }
 
-  ifstream gps_file(data_folder + "/" + gps_filename);
-  if (!gps_file) {
-    throw std::runtime_error("loadNCLTData: cannot open GPS data file at" + data_folder + "/" +
-                             gps_filename + ".");
-  }
+    if (i % gps_freq == 0) {
+      // add a new gps measurement
 
-  double lat0 = (42.293227f / 180.0f) * M_PI;
-  double lng0 = (-83.709657 / 180.0f) * M_PI;
-  double alt0 = 270.0;
-
-  double re = 6378135;
-  double rp = 6356750;
-
-  double den = pow(re * cos(lat0), 2) + pow(rp * sin(lat0), 2.0);
-
-  // radius north south
-  double rns = pow(re * rp, 2) / pow(den, 3.0 / 2.0);
-
-  // radius east west
-  double rew = (re * re) / sqrt(den);
-
-  while (std::getline(gps_file, line)) {
-    GpsMeasurement meas;
-
-    double lat, lng, alt;
-
-    int fix_mode;
-
-    sscanf(line.c_str(), "%lf,%d,%*d,%lf,%lf,%lf,%*f,%*f", &meas.time, &fix_mode, &lat, &lng, &alt);
-
-    if (fix_mode == 3) {
-      // convert using formulas in pdf
-      meas.position.x() = sin(lat - lat0) * rns;
-      meas.position.y() = sin(lng - lng0) * rew * cos(lat0);
-      meas.position.z() = alt0 - alt;
-      meas.time *= 1e-6;
-      gps_measurements.push_back(meas);
+      Vector3 tr;
+      tr << std::get<2>(data.at(i)).translation().cast<double>();
+      GpsMeasurement gps_meas;
+      // get the time from IMU
+      gps_meas.time = std::get<0>(data.at(i)).timestamp;
+      // get translation and add noise
+      gps_meas.position = tr + Vector3(distr(gen), distr(gen), distr(gen));
+      gps_measurements.push_back(gps_meas);
     }
+
+    if (i == 0)
+      vel_zero = std::get<1>(data.at(i)).cast<double>();
   }
 }
-
 int main(int argc, char* argv[]) {
   // DOES NOT WORK: ILL CONDITIONED SYSTEM
   Values result;
 
   vector<ImuMeasurement> imu_measurements;
   vector<GpsMeasurement> gps_measurements;
-  loadNCLTData(imu_measurements, gps_measurements);
+
+  Vector3 vel0;
+
+  generateData(gps_measurements, imu_measurements, vel0);
   std::cout << " loaded measurements\n";
   // Configure different variables
   // double t_offset = gps_measurements[0].time;
-  size_t first_gps = 4;
-  size_t gps_skip  = 4; // Skip this many GPS measurements each time
-  double g         = -9.8;
+  size_t first_gps = 0;
+  size_t gps_skip  = 1; // Skip this many GPS measurements each time
+  double g         = 0.0;
   auto w_coriolis  = Vector3::Zero(); // zero vector
 
   LevenbergMarquardtParams parameters;
-  parameters.setDiagonalDamping(false);
-  parameters.setlambdaInitial(1e3);
-  parameters.setlambdaFactor(1.0);
-  parameters.setMaxIterations(50);
+
+  parameters.setVerbosity("Summary");
 
   // Configure noise models
   auto noise_model_gps =
@@ -166,7 +152,7 @@ int main(int argc, char* argv[]) {
   // initial pose is the reference frame (navigation frame)
   auto current_pose_global = Pose3(Rot3(), gps_measurements[first_gps].position);
   // the vehicle is stationary at the beginning at position 0,0,0
-  Vector3 current_velocity_global = Vector3::Zero();
+  Vector3 current_velocity_global = vel0;
   auto current_bias               = imuBias::ConstantBias(); // init with zero bias
 
   auto sigma_init_x = noiseModel::Diagonal::Precisions(
@@ -192,10 +178,10 @@ int main(int argc, char* argv[]) {
   NonlinearFactorGraph graph;
   Values values;
 
-  size_t j = 0;
+  size_t j                              = 0;
+  size_t included_imu_measurement_count = 0;
 
-  for (size_t i = first_gps; i < gps_measurements.size() / 8; i = i + gps_skip) {
-    size_t included_imu_measurement_count = 0;
+  for (size_t i = first_gps; i < gps_measurements.size(); i = i + gps_skip) {
     std::cout << std::fixed << "gps_idx: " << i << " t: " << gps_measurements[i].time << "\n";
 
     // At each non=IMU measurement we initialize a new node in the graph
@@ -229,10 +215,6 @@ int main(int argc, char* argv[]) {
                                                              imu_measurements[j].gyroscope,
                                                              imu_measurements.at(j + 1).time -
                                                                imu_measurements.at(j).time);
-        std::cout << std::fixed << imu_measurements.at(j).time << " "
-                  << imu_measurements[j].accelerometer.transpose() << " "
-                  << imu_measurements[j].gyroscope.transpose() << "\n";
-        included_imu_measurement_count++;
       }
       j++;
     }
@@ -251,13 +233,10 @@ int main(int argc, char* argv[]) {
 
     // Bias evolution as given in the IMU metadata
     auto sigma_between_b = noiseModel::Diagonal::Sigmas(
-      (Vector6() << Vector3::Constant(
-         sqrt(imu_measurements.at(j + 1).time - imu_measurements.at(j).time) *
-         std::sqrt(sigmas.bias_acc)),
-       Vector3::Constant(sqrt(imu_measurements.at(j + 1).time - imu_measurements.at(j).time) *
-                         std::sqrt(sigmas.bias_gyro)))
+      (Vector6() << Vector3::Constant(sqrt(included_imu_measurement_count) *
+                                      std::sqrt(sigmas.bias_acc)),
+       Vector3::Constant(sqrt(included_imu_measurement_count) * std::sqrt(sigmas.bias_gyro)))
         .finished());
-
     graph.emplace_shared<BetweenFactor<imuBias::ConstantBias>>(
       previous_bias_key, current_bias_key, imuBias::ConstantBias(), sigma_between_b);
 
@@ -295,7 +274,7 @@ int main(int argc, char* argv[]) {
 
   graph.print();
 
-  for (size_t i = first_gps; i < gps_measurements.size() / 8; i = i + gps_skip) {
+  for (size_t i = 0; i < gps_measurements.size(); i = i + gps_skip) {
     auto pose_key = X(i);
     auto vel_key  = V(i);
     auto bias_key = B(i);

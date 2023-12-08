@@ -6,7 +6,14 @@
 
 namespace srrg2_solver {
   void VariableSE3ExpMapRight::applyPerturbation(const Vector6f& pert) {
-    ;
+    this->_updated = true;
+    const auto& dp = pert.head(3);
+    const auto& dr = pert.tail(3);
+
+    auto dR = geometry3d::expMapSO3(static_cast<Vector3f>(dr));
+    _estimate.translation() += _estimate.linear() * dp;
+
+    _estimate.linear() *= dR;
   }
 
   void VariableSE3ExpMapRightAD::applyPerturbationAD(const ADPerturbationVectorType& pert) {

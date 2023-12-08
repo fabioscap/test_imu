@@ -75,6 +75,11 @@ add_executable(nclt_gtsam nclt_gtsam.cpp)
 target_link_libraries(nclt_gtsam
                       gtsam
 )
+add_executable(synthetic_gtsam synthetic_gtsam.cpp)
+target_link_libraries(synthetic_gtsam
+                      gtsam
+                      synthetic
+)
 
 add_executable(nclt nclt.cpp)
 target_link_libraries(nclt

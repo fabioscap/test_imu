@@ -2,7 +2,7 @@
 #include <iostream>
 
 #define _USE_MATH_DEFINES
-#include "variables_and_factors/gps_factor_ad.h"
+#include "variables_and_factors/gps_factor.h"
 #include "variables_and_factors/imu_preintegration_factor.h"
 #include "variables_and_factors/instances.h"
 
@@ -99,11 +99,11 @@ int main(int argc, char* argv[]) {
   solver.param_algorithm.setValue(alg);
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType = VariableSE3ExpMapRightAD;
-  using VarVelImuType  = VariableVector3AD;
-  using ImuBiasVar     = VariableVector3AD;
-  using FactorGpsType  = GpsFactorAD;
-  using FactorBiasType = BiasErrorFactorAD;
+  using VarPoseImuType = VariableSE3ExpMapRight;
+  using VarVelImuType  = VariableVector3;
+  using ImuBiasVar     = VariableVector3;
+  using FactorGpsType  = GpsFactor;
+  using FactorBiasType = BiasErrorFactor;
 
   // initialization
 
@@ -174,11 +174,10 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(sigmas.gyro * sigmas.gyro));
-  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(sigmas.acc * sigmas.acc));
-  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(sigmas.bias_gyro * sigmas.bias_gyro));
-  imu_preintegrator->setNoiseBiasAccelerometer(
-    Vector3f::Constant(sigmas.bias_acc * sigmas.bias_acc));
+  imu_preintegrator->setNoiseGyroscope(Vector3f::Constant(sigmas.gyro));
+  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(sigmas.acc));
+  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(sigmas.bias_gyro));
+  imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(sigmas.bias_acc));
 
   size_t j = 0;
   for (size_t i = 1; i < gps_measurements.size(); ++i) {
@@ -240,7 +239,7 @@ int main(int argc, char* argv[]) {
 
     if (!use_slim) {
       std::cout << "full factor\n";
-      ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
+      ImuPreintegrationFactor* imu_factor = new ImuPreintegrationFactor();
       imu_factor->grav(Vector3f(0.f, 0.f, 0.f));
       imu_factor->setVariableId(0, prev_pose_var->graphId());
       imu_factor->setVariableId(1, prev_vel_var->graphId());

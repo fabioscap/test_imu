@@ -2,7 +2,7 @@ add_library(preintegration_factor SHARED
             imu_preintegration_factor.cpp
             instances.cpp
             variable_se3_expmap_right.cpp
-            gps_factor_ad.cpp
+            gps_factor.cpp
             )
 
 target_link_libraries(preintegration_factor PUBLIC

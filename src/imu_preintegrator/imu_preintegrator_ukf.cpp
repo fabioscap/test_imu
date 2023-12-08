@@ -95,8 +95,6 @@ namespace test_imu {
     sigma_joint_ = 1e-10 * CovJType::Identity();
 
     spoints = SigmaPoints<DeltaManifold>();
-
-    bias_J_ = BiasJacobians();
   }
 
   const core::Matrix3f ImuPreintegratorUKFSlim::delta_R() {
@@ -121,6 +119,23 @@ namespace test_imu {
   }
 
   void ImuPreintegratorUKFSlim::preintegrate_(const ImuMeasurement& m, Scalar dt) {
+    // UKF: alias variables
+    const Matrix3& deltaR = delta_incr_.get<0>().data();
+
+    // correct the measurements
+    Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;
+    Vector3 ang_vel_c = m.angular_vel.cast<Scalar>() - bias_gyro_;
+
+    // auxiliary variables
+    Vector3 dtheta   = ang_vel_c * dt;
+    Matrix3 acc_skew = core::geometry3d::skew(acc_c);
+    Matrix3 dR       = core::geometry3d::expMapSO3(dtheta);
+    core::fixRotation(dR);
+    Matrix3 Jr = core::geometry3d::jacobianExpMapSO3(dtheta);
+
+    /* bias correction jacobians */
+    bias_J_.update(deltaR, acc_skew, dR, Jr, dt);
+
     if (measurements().size() == 1 || true)
       toUnscented_(dt);
 

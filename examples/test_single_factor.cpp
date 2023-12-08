@@ -32,7 +32,7 @@ bool string_in_array(const std::string& query, int argc, char* argv[]) {
 
 // create two variables and a preintegration factor between them
 // then fix the first one and see if the second is optimized
-// to see if ADErrorFactor() is implemented correctly
+// to see if ErrorFactor() is implemented correctly
 int main(int argc, char* argv[]) {
   bool use_ukf = string_in_array("ukf", argc, argv);
   bool slim    = string_in_array("slim", argc, argv);
@@ -42,14 +42,17 @@ int main(int argc, char* argv[]) {
   using namespace test_imu;
   using TrajectoryType = SE3EightTrajectory;
 
-  using VariablePoseType = VariableSE3ExpMapRightAD;
+  using VariablePoseType = VariableSE3ExpMapRight;
+
+  using AlgorithmType = IterationAlgorithmGN;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
-  solver.param_max_iterations.pushBack(100);
-  IterationAlgorithmLM* alg(new IterationAlgorithmLM);
-  // alg->param_damping.setValue(1);
-  solver.param_algorithm.setValue(IterationAlgorithmBasePtr(alg));
+  solver.param_max_iterations.pushBack(50);
+  IterationAlgorithmBasePtr alg(new AlgorithmType);
+  std::shared_ptr<AlgorithmType> temp = std::dynamic_pointer_cast<AlgorithmType>(alg);
+
+  temp->param_damping.setValue(1e3);
   FactorGraphPtr graph(new FactorGraph);
 
   float T    = 100;
@@ -62,41 +65,37 @@ int main(int argc, char* argv[]) {
   imu.generateData(data, false);
 
   VariablePoseType *pose_start, *pose_end;
-  VariableVector3AD *vel_start, *vel_end;
-  VariableVector3AD *bias_acc_start, *bias_acc_end;
-  VariableVector3AD *bias_gyro_start, *bias_gyro_end;
+  VariableVector3 *vel_start, *vel_end;
+  VariableVector3 *bias_acc_start, *bias_acc_end;
+  VariableVector3 *bias_gyro_start, *bias_gyro_end;
 
-  pose_start = new VariablePoseType();
-  vel_start  = new VariableVector3AD();
-  if (!slim) {
-    bias_acc_start  = new VariableVector3AD();
-    bias_gyro_start = new VariableVector3AD();
-  }
+  pose_start      = new VariablePoseType();
+  vel_start       = new VariableVector3();
+  bias_acc_start  = new VariableVector3();
+  bias_gyro_start = new VariableVector3();
 
   pose_end = new VariablePoseType();
-  vel_end  = new VariableVector3AD();
+  vel_end  = new VariableVector3();
 
   if (!slim) {
-    bias_acc_end  = new VariableVector3AD();
-    bias_gyro_end = new VariableVector3AD();
+    bias_acc_end  = new VariableVector3();
+    bias_gyro_end = new VariableVector3();
   }
 
   pose_start->setStatus(VariableBase::Fixed);
   vel_start->setStatus(VariableBase::Fixed);
-  if (!slim) {
-    bias_acc_start->setStatus(VariableBase::Fixed);
-    bias_gyro_start->setStatus(VariableBase::Fixed);
-    // bias_acc_end->setStatus(VariableBase::Fixed);
-    // bias_gyro_end->setStatus(VariableBase::Fixed);
-  }
+  bias_acc_start->setStatus(VariableBase::Fixed);
+  bias_gyro_start->setStatus(VariableBase::Fixed);
+
   graph->addVariable(VariableBasePtr(pose_start));
   graph->addVariable(VariableBasePtr(pose_end));
 
   graph->addVariable(VariableBasePtr(vel_start));
   graph->addVariable(VariableBasePtr(vel_end));
+
+  graph->addVariable(VariableBasePtr(bias_acc_start));
+  graph->addVariable(VariableBasePtr(bias_gyro_start));
   if (!slim) {
-    graph->addVariable(VariableBasePtr(bias_acc_start));
-    graph->addVariable(VariableBasePtr(bias_gyro_start));
     graph->addVariable(VariableBasePtr(bias_acc_end));
     graph->addVariable(VariableBasePtr(bias_gyro_end));
   }
@@ -153,10 +152,8 @@ int main(int argc, char* argv[]) {
     integrator->preintegrate(meas, dt);
   }
 
-  std::cout << "solve\n";
-
   if (!slim) {
-    ImuPreintegrationFactorAD* imu_factor = new ImuPreintegrationFactorAD();
+    ImuPreintegrationFactor* imu_factor = new ImuPreintegrationFactor();
     imu_factor->grav(Vector3f(0, 0, 0));
     imu_factor->setVariableId(0, pose_start->graphId());
     imu_factor->setVariableId(1, vel_start->graphId());
@@ -172,15 +169,18 @@ int main(int argc, char* argv[]) {
     graph->addFactor(FactorBasePtr(imu_factor));
 
   } else {
-    ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
+    ImuPreintegrationFactorSlim* imu_factor = new ImuPreintegrationFactorSlim();
     imu_factor->grav(Vector3f(0, 0, 0));
     imu_factor->setVariableId(0, pose_start->graphId());
     imu_factor->setVariableId(1, vel_start->graphId());
     imu_factor->setVariableId(2, pose_end->graphId());
     imu_factor->setVariableId(3, vel_end->graphId());
+    imu_factor->setVariableId(4, bias_acc_start->graphId());
+    imu_factor->setVariableId(5, bias_gyro_start->graphId());
     imu_factor->setMeasurement(*integrator);
     graph->addFactor(FactorBasePtr(imu_factor));
   }
+  std::cout << "solve\n";
   solver.setGraph(graph);
   solver.compute();
   std::cout << "after compute\n";
