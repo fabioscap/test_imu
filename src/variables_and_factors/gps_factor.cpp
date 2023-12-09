@@ -43,8 +43,10 @@ namespace srrg2_solver {
     if (error_only_)
       return;
 
-    auto J = jacobian<0>();
-    J.block<3, 3>(0, 0).setIdentity();
+    auto J              = jacobian<0>();
+    J.block<3, 3>(0, 0) = _variables.at<0>()->estimate().linear();
+    // god maial: expmap perturbation for translation is not dt but R*dt
+    // it does not make sense to me but I don't want to rewrite the jacobians
   }
 
   void GpsFactorAD::_drawImpl(ViewerCanvasPtr canvas_) const {
