@@ -85,7 +85,7 @@ int main(int argc, char* argv[]) {
   vector<GpsMeasurement> gps_measurements;
   loadNCLTData(imu_measurements, gps_measurements);
 
-  using AlgorithmType = IterationAlgorithmDL;
+  using AlgorithmType = IterationAlgorithmGN;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
@@ -93,20 +93,20 @@ int main(int argc, char* argv[]) {
   IterationAlgorithmBasePtr alg(new AlgorithmType);
   std::shared_ptr<AlgorithmType> temp = std::dynamic_pointer_cast<AlgorithmType>(alg);
 
-  // temp->param_damping.setValue(1e3);
+  temp->param_damping.setValue(1e3);
   // temp->param_user_lambda_init.setValue(1e3);
 
   solver.param_algorithm.setValue(alg);
   solver.param_verbose.setValue(true);
   FactorGraphPtr graph(new FactorGraph);
 
-  using VarPoseImuType    = VariableSE3ExpMapRightAD;
-  using VarVelImuType     = VariableVector3AD;
-  using ImuBiasVar        = VariableVector3AD;
-  using FactorGpsType     = GpsFactorAD;
-  using FactorBiasType    = BiasErrorFactorAD;
-  using FactorImuType     = ImuPreintegrationFactorAD;
-  using FactorImuSlimType = ImuPreintegrationFactorSlimAD;
+  using VarPoseImuType    = VariableSE3ExpMapRight;
+  using VarVelImuType     = VariableVector3;
+  using ImuBiasVar        = VariableVector3;
+  using FactorGpsType     = GpsFactor;
+  using FactorBiasType    = BiasErrorFactor;
+  using FactorImuType     = ImuPreintegrationFactor;
+  using FactorImuSlimType = ImuPreintegrationFactorSlim;
 
   // initialization
   // hash map for variable timestamps
@@ -323,9 +323,6 @@ int main(int argc, char* argv[]) {
       }
     }
     FactorGpsType* gps_factor = new FactorGpsType();
-    RobustifierBase* clamp    = new RobustifierClamp();
-    clamp->param_chi_threshold.setValue(1000.0);
-    // gps_factor->setRobustifier(clamp);
 
     gps_factor->setVariableId(0, curr_pose_var->graphId());
 
@@ -367,6 +364,7 @@ int main(int argc, char* argv[]) {
       solver.setGraph(local_window);
       solver.compute();
     }
+    std::cout << gps_factor->totalJacobian() << "\n";
 
     std::cout << solver.iterationStats() << std::endl;
 
