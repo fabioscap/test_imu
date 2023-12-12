@@ -6,30 +6,104 @@
 #include <srrg_solver/solver_core/instance_macros.h>
 
 namespace srrg2_solver {
-  // TODO can I reuse code
+
+  template class ImuPreintegrationFactorBase<float,
+                                             ErrorFactor_<15,
+                                                          VariableSE3ExpMapRight, // pose_from
+                                                          VariableVector3,        // vel_from
+                                                          VariableSE3ExpMapRight, // pose_to
+                                                          VariableVector3,        // vel_to
+                                                          VariableVector3,        // bias_acc_from
+                                                          VariableVector3,        // bias_gyro_from
+                                                          VariableVector3,        // bias_acc_to
+                                                          VariableVector3>>;
+  template class ImuPreintegrationFactorBase<ad::DualValuef,
+                                             ADErrorFactor_<15,
+                                                            VariableSE3ExpMapRightAD, // pose_from
+                                                            VariableVector3AD,        // vel_from
+                                                            VariableSE3ExpMapRightAD, // pose_to
+                                                            VariableVector3AD,        // vel_to
+                                                            VariableVector3AD, // bias_acc_from
+                                                            VariableVector3AD, // bias_gyro_from
+                                                            VariableVector3AD, // bias_acc_to
+                                                            VariableVector3AD>>;
+  template class ImuPreintegrationFactorBase<float,
+                                             ErrorFactor_<9,
+                                                          VariableSE3ExpMapRight, // pose_from
+                                                          VariableVector3,        // vel_from
+                                                          VariableSE3ExpMapRight, // pose_to
+                                                          VariableVector3,        // vel_to
+                                                          VariableVector3,        // bias_from
+                                                          VariableVector3>>;
+  template class ImuPreintegrationFactorBase<ad::DualValuef,
+                                             ADErrorFactor_<9,
+                                                            VariableSE3ExpMapRightAD, // pose_from
+                                                            VariableVector3AD,        // vel_from
+                                                            VariableSE3ExpMapRightAD, // pose_to
+                                                            VariableVector3AD,        // vel_to
+                                                            VariableVector3AD,        // bias_from
+                                                            VariableVector3AD>>;
+
+  template <typename Scalar_>
+  Matrix3_<Scalar_> jacobianExpMapSO3inv(const Vector3_<Scalar_> omega_) {
+    Matrix3_<Scalar_> Jri;
+    Scalar_ theta_square = omega_.dot(omega_);
+    Scalar_ theta        = sqrt(theta_square);
+    Matrix3_<Scalar_> W  = geometry3d::skew(omega_);
+    if (theta_square < Scalar_(1e-8)) {
+      Jri = Matrix3_<Scalar_>::Identity() + Scalar_(0.5) * W;
+    } else {
+      Jri = Matrix3_<Scalar_>::Identity() + Scalar_(0.5) * W +
+            ((1 / theta_square) + (1 + cos(theta)) / (2 * theta * sin(theta))) * W * W;
+    }
+    return Jri;
+  }
+
+  template <typename Scalar_, typename BaseType_>
+  void srrg2_solver::ImuPreintegrationFactorBase<Scalar_, BaseType_>::setMeasurement(
+    test_imu::ImuPreintegratorBase& preintegrator) {
+    using srrg2_core::ad::convertMatrix;
+
+    const test_imu::BiasJacobians& bias_J_ptr = preintegrator.biasJacobians();
+
+    // TODO is it bad to call convertMatrix even if the type is the same?
+    convertMatrix(delta_R_, preintegrator.delta_R());
+    convertMatrix(delta_v_, preintegrator.delta_v());
+    convertMatrix(delta_p_, preintegrator.delta_p());
+    convertMatrix(bias_acc_nom_, preintegrator.bias_acc());
+    convertMatrix(bias_gyro_nom_, preintegrator.bias_gyro());
+    convertMatrix(dR_db_gyro_, bias_J_ptr.dR_db_gyro);
+    convertMatrix(dv_db_acc_, bias_J_ptr.dv_db_acc);
+    convertMatrix(dv_db_gyro_, bias_J_ptr.dv_db_gyro);
+    convertMatrix(dp_db_acc_, bias_J_ptr.dp_db_acc);
+    convertMatrix(dp_db_gyro_, bias_J_ptr.dp_db_gyro);
+
+    dT_ = Scalar_(preintegrator.dT());
+    BaseType_::setInformationMatrix(preintegrator.sigma().inverse());
+  }
 
   ImuPreintegrationFactorAD::ADErrorVectorType
   ImuPreintegrationFactorAD::operator()(ImuPreintegrationFactorAD::VariableTupleType& vars) {
-    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate() * offset_;
-    const dMatrix3f& R_i              = T_i.linear();
-    const dVector3f& p_i              = T_i.translation();
-    const dVector3f& v_i              = offset_.linear().transpose() * vars.at<1>()->adEstimate();
+    const Isometry3& T_i = vars.at<0>()->adEstimate() * offset_;
+    const Matrix3& R_i   = T_i.linear();
+    const Vector3& p_i   = T_i.translation();
+    const Vector3& v_i   = vars.at<1>()->adEstimate();
 
-    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate() * offset_;
-    const dMatrix3f& R_j              = T_j.linear();
-    const dVector3f& p_j              = T_j.translation();
-    const dVector3f& v_j              = offset_.linear().transpose() * vars.at<3>()->adEstimate();
+    const Isometry3& T_j = vars.at<2>()->adEstimate() * offset_;
+    const Matrix3& R_j   = T_j.linear();
+    const Vector3& p_j   = T_j.translation();
+    const Vector3& v_j   = vars.at<3>()->adEstimate();
 
-    const dVector3f& bias_acc_i  = vars.at<4>()->adEstimate();
-    const dVector3f& bias_gyro_i = vars.at<5>()->adEstimate();
-    const dVector3f& bias_acc_j  = vars.at<6>()->adEstimate();
-    const dVector3f& bias_gyro_j = vars.at<7>()->adEstimate();
+    const Vector3& bias_acc_i  = vars.at<4>()->adEstimate();
+    const Vector3& bias_gyro_i = vars.at<5>()->adEstimate();
+    const Vector3& bias_acc_j  = vars.at<6>()->adEstimate();
+    const Vector3& bias_gyro_j = vars.at<7>()->adEstimate();
 
     ADErrorVectorType error;
 
     // bias correction via first order approximation around nominal values
-    const dVector3f delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const dVector3f delta_bgyro = bias_gyro_i - bias_gyro_nom_;
+    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
+    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
 
     // orientation error
     error.segment<3>(0) = geometry3d::logMapSO3(
@@ -56,46 +130,28 @@ namespace srrg2_solver {
     return error;
   }
 
-  void ImuPreintegrationFactorAD::setMeasurement(test_imu::ImuPreintegratorBase& preintegrator) {
-    convertMatrix(delta_R_, preintegrator.delta_R());
-    convertMatrix(delta_v_, preintegrator.delta_v());
-    convertMatrix(delta_p_, preintegrator.delta_p());
-    convertMatrix(bias_acc_nom_, preintegrator.bias_acc());
-    convertMatrix(bias_gyro_nom_, preintegrator.bias_gyro());
-
-    const test_imu::BiasJacobians* bias_J_ptr = preintegrator.biasJacobians();
-    if (bias_J_ptr) {
-      convertMatrix(dR_db_gyro_, bias_J_ptr->dR_db_gyro);
-      convertMatrix(dv_db_acc_, bias_J_ptr->dv_db_acc);
-      convertMatrix(dv_db_gyro_, bias_J_ptr->dv_db_gyro);
-      convertMatrix(dp_db_acc_, bias_J_ptr->dp_db_acc);
-      convertMatrix(dp_db_gyro_, bias_J_ptr->dp_db_gyro);
-    }
-    dT_ = DualValuef(preintegrator.dT());
-    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
-    // setInformationMatrix(Eigen::MatrixXf::Identity(15, 15));
-  }
-
   ImuPreintegrationFactorSlimAD::ADErrorVectorType ImuPreintegrationFactorSlimAD::operator()(
     ImuPreintegrationFactorSlimAD::VariableTupleType& vars) {
-    const Isometry3_<DualValuef>& T_i = vars.at<0>()->adEstimate() * offset_;
-    const dMatrix3f& R_i              = T_i.linear();
-    const dVector3f& p_i              = T_i.translation();
-    const dVector3f& v_i              = offset_.linear().transpose() * vars.at<1>()->adEstimate();
+    const Isometry3& T_i = vars.at<0>()->adEstimate() * offset_;
+    const Matrix3& R_i   = T_i.linear();
+    const Vector3& p_i   = T_i.translation();
 
-    const Isometry3_<DualValuef>& T_j = vars.at<2>()->adEstimate() * offset_;
-    const dMatrix3f& R_j              = T_j.linear();
-    const dVector3f& p_j              = T_j.translation();
-    const dVector3f& v_j              = offset_.linear().transpose() * vars.at<3>()->adEstimate();
+    // there should be a component depending on angular velocity
+    const Vector3& v_i = vars.at<1>()->adEstimate();
 
-    const dVector3f& bias_acc_i  = vars.at<4>()->adEstimate();
-    const dVector3f& bias_gyro_i = vars.at<5>()->adEstimate();
+    const Isometry3& T_j = vars.at<2>()->adEstimate() * offset_;
+    const Matrix3& R_j   = T_j.linear();
+    const Vector3& p_j   = T_j.translation();
+    const Vector3& v_j   = vars.at<3>()->adEstimate();
+
+    const Vector3& bias_acc_i  = vars.at<4>()->adEstimate();
+    const Vector3& bias_gyro_i = vars.at<5>()->adEstimate();
 
     ADErrorVectorType error;
 
     // bias correction via first order approximation around nominal values
-    const dVector3f delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const dVector3f delta_bgyro = bias_gyro_i - bias_gyro_nom_;
+    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
+    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
 
     // orientation error
     error.segment<3>(0) = geometry3d::logMapSO3(
@@ -111,27 +167,6 @@ namespace srrg2_solver {
       (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
 
     return error;
-  }
-
-  void
-  ImuPreintegrationFactorSlimAD::setMeasurement(test_imu::ImuPreintegratorBase& preintegrator) {
-    convertMatrix(delta_R_, preintegrator.delta_R());
-    convertMatrix(delta_v_, preintegrator.delta_v());
-    convertMatrix(delta_p_, preintegrator.delta_p());
-    convertMatrix(bias_acc_nom_, preintegrator.bias_acc());
-    convertMatrix(bias_gyro_nom_, preintegrator.bias_gyro());
-
-    const test_imu::BiasJacobians* bias_J_ptr = preintegrator.biasJacobians();
-    if (bias_J_ptr) {
-      convertMatrix(dR_db_gyro_, bias_J_ptr->dR_db_gyro);
-      convertMatrix(dv_db_acc_, bias_J_ptr->dv_db_acc);
-      convertMatrix(dv_db_gyro_, bias_J_ptr->dv_db_gyro);
-      convertMatrix(dp_db_acc_, bias_J_ptr->dp_db_acc);
-      convertMatrix(dp_db_gyro_, bias_J_ptr->dp_db_gyro);
-    }
-    dT_ = DualValuef(preintegrator.dT());
-    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
-    // setInformationMatrix(Eigen::MatrixXf::Identity(9, 9));
   }
 
   BiasErrorFactorAD::ADErrorVectorType BiasErrorFactorAD::operator()(VariableTupleType& vars) {
@@ -173,40 +208,25 @@ namespace srrg2_solver {
     Jbgi.block<3, 3>(3, 0) = -Matrix3f::Identity();
   }
 
-  template <typename Scalar_>
-  Matrix3_<Scalar_> jacobianExpMapSO3inv(const Vector3_<Scalar_> omega_) {
-    Matrix3_<Scalar_> Jri;
-    Scalar_ theta_square = omega_.dot(omega_);
-    Scalar_ theta        = sqrt(theta_square);
-    Matrix3_<Scalar_> W  = geometry3d::skew(omega_);
-    if (theta_square < Scalar_(1e-8)) {
-      Jri = Matrix3_<Scalar_>::Identity() + Scalar_(0.5) * W;
-    } else {
-      Jri = Matrix3_<Scalar_>::Identity() + Scalar_(0.5) * W +
-            ((1 / theta_square) + (1 + cos(theta)) / (2 * theta * sin(theta))) * W * W;
-    }
-    return Jri;
-  }
-
   void ImuPreintegrationFactor::errorAndJacobian(bool error_only_) {
     const Isometry3f& T_i = _variables.at<0>()->estimate() * offset_;
-    const Matrix3f& R_i   = T_i.linear();
-    const Vector3f& p_i   = T_i.translation();
-    const Vector3f& v_i   = offset_.linear().transpose() * _variables.at<1>()->estimate();
+    const Matrix3& R_i    = T_i.linear();
+    const Vector3& p_i    = T_i.translation();
+    const Vector3& v_i    = _variables.at<1>()->estimate();
 
     const Isometry3f& T_j = _variables.at<2>()->estimate() * offset_;
-    const Matrix3f& R_j   = T_j.linear();
-    const Vector3f& p_j   = T_j.translation();
-    const Vector3f& v_j   = offset_.linear().transpose() * _variables.at<3>()->estimate();
+    const Matrix3& R_j    = T_j.linear();
+    const Vector3& p_j    = T_j.translation();
+    const Vector3& v_j    = _variables.at<3>()->estimate();
 
-    const Vector3f& bias_acc_i  = _variables.at<4>()->estimate();
-    const Vector3f& bias_gyro_i = _variables.at<5>()->estimate();
-    const Vector3f& bias_acc_j  = _variables.at<6>()->estimate();
-    const Vector3f& bias_gyro_j = _variables.at<7>()->estimate();
+    const Vector3& bias_acc_i  = _variables.at<4>()->estimate();
+    const Vector3& bias_gyro_i = _variables.at<5>()->estimate();
+    const Vector3& bias_acc_j  = _variables.at<6>()->estimate();
+    const Vector3& bias_gyro_j = _variables.at<7>()->estimate();
 
     // bias correction via first order approximation around nominal values
-    const Vector3f delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3f delta_bgyro = bias_gyro_i - bias_gyro_nom_;
+    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
+    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
 
     _e.segment<3>(0) = geometry3d::logMapSO3(
       ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
@@ -253,7 +273,7 @@ namespace srrg2_solver {
     Jpi.block<3, 3>(6, 3) = geometry3d::skew(
       (R_i.transpose() * (p_j - p_i - v_i * dT_ - 0.5 * grav_ * dT_ * dT_)).eval());
 
-    Jpi.block<3, 3>(6, 0) = -Matrix3f::Identity();
+    Jpi.block<3, 3>(6, 0) = -Matrix3::Identity();
 
     Jvi.block<3, 3>(6, 0) = -R_i.transpose() * dT_;
 
@@ -275,8 +295,8 @@ namespace srrg2_solver {
     Jbgi.block<3, 3>(3, 0) = -dv_db_gyro_;
 
     // jacobians related to delta_R_
-    Vector3f r_phi        = _e.segment<3>(0);
-    Matrix3f Jinv         = jacobianExpMapSO3inv(r_phi);
+    Vector3 r_phi         = _e.segment<3>(0);
+    Matrix3 Jinv          = jacobianExpMapSO3inv(r_phi);
     Jpi.block<3, 3>(0, 3) = -Jinv * R_j.transpose() * R_i;
 
     Jpj.block<3, 3>(0, 3) = Jinv;
@@ -286,36 +306,41 @@ namespace srrg2_solver {
                              dR_db_gyro_;
 
     // now the jacobians related to the bias propagation
-    Jbaj.block<3, 3>(9, 0)  = Matrix3f::Identity();
-    Jbgj.block<3, 3>(12, 0) = Matrix3f::Identity();
+    Jbaj.block<3, 3>(9, 0)  = Matrix3::Identity();
+    Jbgj.block<3, 3>(12, 0) = Matrix3::Identity();
 
-    Jbai.block<3, 3>(9, 0)  = -Matrix3f::Identity();
-    Jbgi.block<3, 3>(12, 0) = -Matrix3f::Identity();
+    Jbai.block<3, 3>(9, 0)  = -Matrix3::Identity();
+    Jbgi.block<3, 3>(12, 0) = -Matrix3::Identity();
 
-    // std::cout << _J << "\n\n";
+    /*     // adjust for offset
+        Jpi *= pert_J_;
+        Jpj *= pert_J_;
+        // velocities perturbation are just rotated
+        Jvi *= offset_.linear().transpose();
+        Jvj *= offset_.linear().transpose(); */
 
-    /* std::cout << "error: " << _e.transpose() << "\n";
-    std::cout << "J:\n" << _J << "\n\n\n"; */
+    // biases are untransformed
+
     return;
   }
 
   void ImuPreintegrationFactorSlim::errorAndJacobian(bool error_only_) {
     const Isometry3f& T_i = _variables.at<0>()->estimate() * offset_;
-    const Matrix3f& R_i   = T_i.linear();
-    const Vector3f& p_i   = T_i.translation();
-    const Vector3f& v_i   = offset_.linear().transpose() * _variables.at<1>()->estimate();
+    const Matrix3& R_i    = T_i.linear();
+    const Vector3& p_i    = T_i.translation();
+    const Vector3& v_i    = _variables.at<1>()->estimate();
 
     const Isometry3f& T_j = _variables.at<2>()->estimate() * offset_;
-    const Matrix3f& R_j   = T_j.linear();
-    const Vector3f& p_j   = T_j.translation();
-    const Vector3f& v_j   = offset_.linear().transpose() * _variables.at<3>()->estimate();
+    const Matrix3& R_j    = T_j.linear();
+    const Vector3& p_j    = T_j.translation();
+    const Vector3& v_j    = _variables.at<3>()->estimate();
 
-    const Vector3f& bias_acc_i  = _variables.at<4>()->estimate();
-    const Vector3f& bias_gyro_i = _variables.at<5>()->estimate();
+    const Vector3& bias_acc_i  = _variables.at<4>()->estimate();
+    const Vector3& bias_gyro_i = _variables.at<5>()->estimate();
 
     // bias correction via first order approximation around nominal values
-    const Vector3f delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3f delta_bgyro = bias_gyro_i - bias_gyro_nom_;
+    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
+    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
 
     _e.segment<3>(0) = geometry3d::logMapSO3(
       ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
@@ -355,7 +380,7 @@ namespace srrg2_solver {
     Jpi.block<3, 3>(6, 3) = geometry3d::skew(
       (R_i.transpose() * (p_j - p_i - v_i * dT_ - 0.5 * grav_ * dT_ * dT_)).eval());
 
-    Jpi.block<3, 3>(6, 0) = -Matrix3f::Identity();
+    Jpi.block<3, 3>(6, 0) = -Matrix3::Identity();
 
     Jvi.block<3, 3>(6, 0) = -R_i.transpose() * dT_;
 
@@ -377,8 +402,8 @@ namespace srrg2_solver {
     Jbgi.block<3, 3>(3, 0) = -dv_db_gyro_;
 
     // jacobians related to delta_R_
-    Vector3f r_phi        = _e.segment<3>(0);
-    Matrix3f Jinv         = jacobianExpMapSO3inv(r_phi);
+    Vector3 r_phi         = _e.segment<3>(0);
+    Matrix3 Jinv          = jacobianExpMapSO3inv(r_phi);
     Jpi.block<3, 3>(0, 3) = -Jinv * R_j.transpose() * R_i;
 
     Jpj.block<3, 3>(0, 3) = Jinv;
@@ -387,137 +412,36 @@ namespace srrg2_solver {
                              geometry3d::jacobianExpMapSO3((dR_db_gyro_ * delta_bgyro).eval()) *
                              dR_db_gyro_;
 
-    /* std::cout << "error: " << _e.transpose() << "\n";
-    std::cout << "J:\n" << _J << "\n\n\n"; */
+    /*     // adjust for offset
+        Jpi *= pert_J_;
+        Jpj *= pert_J_;
+        // velocities perturbation are just rotated
+        Jvi *= offset_.linear().transpose();
+        Jvj *= offset_.linear().transpose(); */
+
+    // biases are untransformed
 
     return;
   }
-
-  void ImuPreintegrationFactor::setMeasurement(test_imu::ImuPreintegratorBase& preintegrator) {
-    (delta_R_ = preintegrator.delta_R());
-    (delta_v_ = preintegrator.delta_v());
-    (delta_p_ = preintegrator.delta_p());
-    (bias_acc_nom_ = preintegrator.bias_acc());
-    (bias_gyro_nom_ = preintegrator.bias_gyro());
-
-    const test_imu::BiasJacobians* bias_J_ptr = preintegrator.biasJacobians();
-    if (bias_J_ptr) {
-      (dR_db_gyro_ = bias_J_ptr->dR_db_gyro.cast<float>());
-      (dv_db_acc_ = bias_J_ptr->dv_db_acc.cast<float>());
-      (dv_db_gyro_ = bias_J_ptr->dv_db_gyro.cast<float>());
-      (dp_db_acc_ = bias_J_ptr->dp_db_acc.cast<float>());
-      (dp_db_gyro_ = bias_J_ptr->dp_db_gyro.cast<float>());
-    }
-    dT_ = preintegrator.dT();
-    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
-    // setInformationMatrix(Eigen::MatrixXf::Identity(15, 15));
-  }
-
-  void ImuPreintegrationFactorSlim::setMeasurement(test_imu::ImuPreintegratorBase& preintegrator) {
-    (delta_R_ = preintegrator.delta_R());
-    (delta_v_ = preintegrator.delta_v());
-    (delta_p_ = preintegrator.delta_p());
-    (bias_acc_nom_ = preintegrator.bias_acc());
-    (bias_gyro_nom_ = preintegrator.bias_gyro());
-
-    const test_imu::BiasJacobians* bias_J_ptr = preintegrator.biasJacobians();
-    if (bias_J_ptr) {
-      (dR_db_gyro_ = bias_J_ptr->dR_db_gyro.cast<float>());
-      (dv_db_acc_ = bias_J_ptr->dv_db_acc.cast<float>());
-      (dv_db_gyro_ = bias_J_ptr->dv_db_gyro.cast<float>());
-      (dp_db_acc_ = bias_J_ptr->dp_db_acc.cast<float>());
-      (dp_db_gyro_ = bias_J_ptr->dp_db_gyro.cast<float>());
-    }
-    dT_ = preintegrator.dT();
-    setInformationMatrix(preintegrator.sigma().inverse().cast<float>());
-    // setInformationMatrix(Eigen::MatrixXf::Identity(9, 9));
-  }
-
-  void ImuPreintegrationFactor::_drawImpl(ViewerCanvasPtr canvas_) const {
+  template <typename Scalar_, typename BaseType_>
+  void ImuPreintegrationFactorBase<Scalar_, BaseType_>::_drawImpl(ViewerCanvasPtr canvas_) const {
     Vector3f coords[2];
-    coords[0] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
-    coords[1] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
+    coords[0] = reinterpret_cast<const VariableSE3ExpMapRight*>(BaseType_::variable(0))
+                  ->estimate()
+                  .translation();
+    coords[1] = reinterpret_cast<const VariableSE3ExpMapRight*>(BaseType_::variable(2))
+                  ->estimate()
+                  .translation();
 
     float lw = 0.5;
-    if (fabs(variableId(0) - variableId(1)) == 1) {
+    if (fabs(BaseType_::variableId(0) - BaseType_::variableId(1)) == 1) {
       lw *= 2;
     }
-    lw *= (level() * 3 + 1);
+    lw *= (BaseType_::level() * 3 + 1);
     canvas_->pushColor();
     canvas_->pushLineWidth();
     canvas_->setLineWidth(lw);
-    float fading   = 1. - 0.5 * level();
-    Vector3f color = srrg2_core::ColorPalette::color3fBlue() * fading;
-    canvas_->setColor(color);
-    canvas_->putLine(2, coords);
-    canvas_->popAttribute();
-    canvas_->popAttribute();
-  }
-
-  void ImuPreintegrationFactorAD::_drawImpl(ViewerCanvasPtr canvas_) const {
-    Vector3f coords[2];
-    coords[0] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
-    coords[1] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
-
-    float lw = 0.5;
-    if (fabs(variableId(0) - variableId(1)) == 1) {
-      lw *= 2;
-    }
-    lw *= (level() * 3 + 1);
-    canvas_->pushColor();
-    canvas_->pushLineWidth();
-    canvas_->setLineWidth(lw);
-    float fading   = 1. - 0.5 * level();
-    Vector3f color = srrg2_core::ColorPalette::color3fBlue() * fading;
-    canvas_->setColor(color);
-    canvas_->putLine(2, coords);
-    canvas_->popAttribute();
-    canvas_->popAttribute();
-  }
-
-  void ImuPreintegrationFactorSlim::_drawImpl(ViewerCanvasPtr canvas_) const {
-    Vector3f coords[2];
-    coords[0] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
-    coords[1] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
-
-    float lw = 0.5;
-    if (fabs(variableId(0) - variableId(1)) == 1) {
-      lw *= 2;
-    }
-    lw *= (level() * 3 + 1);
-    canvas_->pushColor();
-    canvas_->pushLineWidth();
-    canvas_->setLineWidth(lw);
-    float fading   = 1. - 0.5 * level();
-    Vector3f color = srrg2_core::ColorPalette::color3fBlue() * fading;
-    canvas_->setColor(color);
-    canvas_->putLine(2, coords);
-    canvas_->popAttribute();
-    canvas_->popAttribute();
-  }
-
-  void ImuPreintegrationFactorSlimAD::_drawImpl(ViewerCanvasPtr canvas_) const {
-    Vector3f coords[2];
-    coords[0] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(0))->estimate().translation();
-    coords[1] =
-      reinterpret_cast<const VariableSE3ExpMapRight*>(variable(2))->estimate().translation();
-
-    float lw = 0.5;
-    if (fabs(variableId(0) - variableId(1)) == 1) {
-      lw *= 2;
-    }
-    lw *= (level() * 3 + 1);
-    canvas_->pushColor();
-    canvas_->pushLineWidth();
-    canvas_->setLineWidth(lw);
-    float fading   = 1. - 0.5 * level();
+    float fading   = 1. - 0.5 * BaseType_::level();
     Vector3f color = srrg2_core::ColorPalette::color3fBlue() * fading;
     canvas_->setColor(color);
     canvas_->putLine(2, coords);
@@ -528,6 +452,8 @@ namespace srrg2_solver {
   INSTANTIATE(ImuPreintegrationFactor)
   INSTANTIATE(ImuPreintegrationFactorAD)
   INSTANTIATE(ImuPreintegrationFactorSlim)
-  INSTANTIATE(ImuPreintegrationFactorSlimAD) INSTANTIATE(BiasErrorFactorAD)
+  INSTANTIATE(ImuPreintegrationFactorSlimAD)
+  INSTANTIATE(BiasErrorFactor)
+  INSTANTIATE(BiasErrorFactorAD)
 
 } // namespace srrg2_solver
