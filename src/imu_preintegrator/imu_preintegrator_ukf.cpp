@@ -22,10 +22,6 @@ namespace test_imu {
     return sigma_joint_.block<state_dim, state_dim>(0, 0).cast<float>();
   }
 
-  const BiasJacobians* ImuPreintegratorUKF::biasJacobians() const {
-    return &bias_J_;
-  }
-
   void ImuPreintegratorUKF::preintegrate_(const ImuMeasurement& m, Scalar dt) {
     // UKF: alias variables
     const Matrix3& deltaR = delta_incr_.get<0>().data();

@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
 
   if (!slim) {
     ImuPreintegrationFactor* imu_factor = new ImuPreintegrationFactor();
-    imu_factor->grav(Vector3f(0, 0, 0));
+    imu_factor->setGrav(Vector3f(0, 0, 0));
     imu_factor->setVariableId(0, pose_start->graphId());
     imu_factor->setVariableId(1, vel_start->graphId());
     imu_factor->setVariableId(2, pose_end->graphId());
@@ -170,7 +170,7 @@ int main(int argc, char* argv[]) {
 
   } else {
     ImuPreintegrationFactorSlim* imu_factor = new ImuPreintegrationFactorSlim();
-    imu_factor->grav(Vector3f(0, 0, 0));
+    imu_factor->setGrav(Vector3f(0, 0, 0));
     imu_factor->setVariableId(0, pose_start->graphId());
     imu_factor->setVariableId(1, vel_start->graphId());
     imu_factor->setVariableId(2, pose_end->graphId());

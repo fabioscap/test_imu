@@ -14,10 +14,6 @@
 #define NBAidx 9
 
 namespace test_imu {
-  const BiasJacobians* ImuPreintegrator::biasJacobians() const {
-    return &bias_J_;
-  }
-
   void ImuPreintegrator::preintegrate_(const ImuMeasurement& m, Scalar dt) {
     // correct the measurements
     Vector3 acc_c     = m.acceleration.cast<Scalar>() - bias_acc_;

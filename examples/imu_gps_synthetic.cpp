@@ -240,7 +240,7 @@ int main(int argc, char* argv[]) {
     if (!use_slim) {
       std::cout << "full factor\n";
       ImuPreintegrationFactor* imu_factor = new ImuPreintegrationFactor();
-      imu_factor->grav(Vector3f(0.f, 0.f, 0.f));
+      imu_factor->setGrav(Vector3f(0.f, 0.f, 0.f));
       imu_factor->setVariableId(0, prev_pose_var->graphId());
       imu_factor->setVariableId(1, prev_vel_var->graphId());
       imu_factor->setVariableId(2, curr_pose_var->graphId());
@@ -257,7 +257,7 @@ int main(int argc, char* argv[]) {
     } else {
       std::cout << "slim factor\n";
       ImuPreintegrationFactorSlimAD* imu_factor = new ImuPreintegrationFactorSlimAD();
-      imu_factor->grav(Vector3f(0.f, 0.f, 0.f));
+      imu_factor->setGrav(Vector3f(0.f, 0.f, 0.f));
       imu_factor->setVariableId(0, prev_pose_var->graphId());
       imu_factor->setVariableId(1, prev_vel_var->graphId());
       imu_factor->setVariableId(2, curr_pose_var->graphId());

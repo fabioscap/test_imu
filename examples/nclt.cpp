@@ -280,7 +280,7 @@ int main(int argc, char* argv[]) {
       if (!use_slim) {
         FactorImuType* imu_factor = new FactorImuType();
         imu_factor->setOffset(imu_in_body);
-        imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
+        imu_factor->setGrav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
         imu_factor->setVariableId(2, curr_pose_var->graphId());
@@ -298,7 +298,7 @@ int main(int argc, char* argv[]) {
       } else {
         FactorImuSlimType* imu_factor = new FactorImuSlimType();
         imu_factor->setOffset(imu_in_body);
-        imu_factor->grav(Vector3f(0.f, 0.f, 9.80655));
+        imu_factor->setGrav(Vector3f(0.f, 0.f, 9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
         imu_factor->setVariableId(1, prev_vel_var->graphId());
         imu_factor->setVariableId(2, curr_pose_var->graphId());

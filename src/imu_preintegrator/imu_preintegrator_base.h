@@ -66,8 +66,8 @@ namespace test_imu {
                        core::Isometry3f& Tf,
                        core::Vector3f& vf);
 
-    inline virtual const BiasJacobians* biasJacobians() const {
-      return &bias_J_;
+    inline virtual const BiasJacobians& biasJacobians() const {
+      return bias_J_;
     } // don't estimate biases by default
 
   protected:
