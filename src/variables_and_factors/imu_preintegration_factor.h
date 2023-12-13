@@ -15,14 +15,17 @@
 
 namespace srrg2_solver {
 
+  // In this class I put the most amount of shared code between the 4 factors (slim/autodiff) so I
+  // do not have to change it 4 times
   template <typename Scalar_, typename BaseType_>
   class ImuPreintegrationFactorBase : public BaseType_ {
   public:
     using BaseType = BaseType_;
 
-    using Matrix3 = srrg2_core::MatrixN_<Scalar_, 3>;
-    using Vector3 = srrg2_core::Vector_<Scalar_, 3>;
-    using Vector9 = srrg2_core::Vector_<Scalar_, 9>;
+    using Matrix3  = srrg2_core::MatrixN_<Scalar_, 3>;
+    using Vector3  = srrg2_core::Vector_<Scalar_, 3>;
+    using Vector9  = srrg2_core::Vector_<Scalar_, 9>;
+    using Vector15 = srrg2_core::Vector_<Scalar_, 15>;
 
     using Isometry3 = srrg2_core::Isometry3_<Scalar_>;
 
@@ -38,12 +41,13 @@ namespace srrg2_solver {
 
   protected:
     void _drawImpl(ViewerCanvasPtr canvas_) const override;
-    void computeResiduals(const Isometry3& Ti,
-                          const Vector3& vi,
-                          const Isometry3& Tj,
-                          const Vector3& vj,
-                          const Vector3& ba,
-                          const Vector3& bg) const;
+
+    // the residuals in eq. 45 of Carlone paper
+    // all 4 factors use this code for the residuals and the jacobians
+    auto computeResiduals(typename BaseType::VariableTupleType&, bool error_only_);
+
+    template <size_t i, bool ad>
+    auto getEstimateAt(typename BaseType::VariableTupleType&);
 
     Matrix3 delta_R_;
     Vector3 delta_v_;
@@ -65,10 +69,6 @@ namespace srrg2_solver {
     Vector3 grav_;
 
     Isometry3 offset_ = Isometry3::Identity(); // imu in body
-
-    // correction jacobians
-    // how a perturbation in body frame transforms into imu frame
-    MatrixN_<Scalar_, 6> pert_J_ = MatrixN_<Scalar_, 6>::Zero();
   };
 
   class ImuPreintegrationFactor
@@ -137,6 +137,10 @@ namespace srrg2_solver {
     ADErrorVectorType operator()(VariableTupleType& vars);
   };
 
+  // If you use slim factors you may use also these between the biases of two timesteps. It should
+  // help to keep them consistent and slow varying. The full factor already does this. The main
+  // advantage of using a slim factor is that it is of smaller dimension, but you lose some
+  // off-diagonal correlation terms in the information matrix.
   class BiasErrorFactor : public ErrorFactor_<6,
                                               VariableVector3, // bias acc from
                                               VariableVector3, // bias_gyro_from

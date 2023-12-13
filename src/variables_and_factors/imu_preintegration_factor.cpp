@@ -60,6 +60,142 @@ namespace srrg2_solver {
   }
 
   template <typename Scalar_, typename BaseType_>
+  template <size_t i, bool ad>
+  inline auto srrg2_solver::ImuPreintegrationFactorBase<Scalar_, BaseType_>::getEstimateAt(
+    typename BaseType::VariableTupleType& vars) {
+    if constexpr (ad) {
+      return vars.template at<i>()->adEstimate();
+    } else {
+      return vars.template at<i>()->estimate();
+    }
+  }
+
+  template <typename Scalar_, typename BaseType_>
+  auto ImuPreintegrationFactorBase<Scalar_, BaseType_>::computeResiduals(
+    typename BaseType_::VariableTupleType& vars,
+    bool error_only_) {
+    // find out which type of factor is calling this function
+    constexpr bool slim = (BaseType_::ErrorDim == 9);
+    constexpr bool ad   = std::is_same<Scalar_, DualValuef>::value;
+
+    // get the variables
+    const Isometry3 T_i = getEstimateAt<0, ad>(vars);
+    const Vector3 v_i   = getEstimateAt<1, ad>(vars);
+    const Isometry3 T_j = getEstimateAt<2, ad>(vars);
+    const Vector3 v_j   = getEstimateAt<3, ad>(vars);
+    const Vector3 ba_i  = getEstimateAt<4, ad>(vars);
+    const Vector3 bg_i  = getEstimateAt<5, ad>(vars);
+
+    const Matrix3& R_i = T_i.linear();
+    const Vector3& p_i = T_i.translation();
+    const Matrix3& R_j = T_j.linear();
+    const Vector3& p_j = T_j.translation();
+
+    Vector_<Scalar_, BaseType_::ErrorDim> error;
+
+    // bias correction via first order approximation around nominal values
+    const Vector3 delta_bacc  = ba_i - bias_acc_nom_;
+    const Vector3 delta_bgyro = bg_i - bias_gyro_nom_;
+
+    // orientation error
+    error.template segment<3>(0) = geometry3d::logMapSO3(
+      ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
+       R_i.transpose() * R_j)
+        .eval());
+    // velocity error
+    error.template segment<3>(3) = R_i.transpose() * (v_j - v_i - grav_ * dT_) -
+                                   (delta_v_ + dv_db_acc_ * delta_bacc + dv_db_gyro_ * delta_bgyro);
+    // position error
+    error.template segment<3>(6) =
+      R_i.transpose() * (p_j - p_i - v_i * dT_ - DualValuef(0.5) * grav_ * dT_ * dT_) -
+      (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
+
+    if constexpr (!slim) {
+      // complete the error vector
+      const Vector3 ba_j            = getEstimateAt<6, ad>(vars);
+      const Vector3 bg_j            = getEstimateAt<7, ad>(vars);
+      error.template segment<3>(9)  = ba_j - ba_i;
+      error.template segment<3>(12) = bg_j - bg_i;
+    }
+
+    // AD factors stop here
+    if constexpr (ad) {
+      return error;
+    } else {
+      // side effect on _e
+      BaseType::_e = error;
+
+      // now we compute jacobians (if necessary)
+      if (error_only_) {
+        return error;
+      }
+
+      // check if this is necessary
+      // std::cout <<jacobian<0>() << "\n";
+      BaseType::_J.setZero();
+
+      // jacobians of delta_p_
+      auto Jpi  = BaseType::template jacobian<0>();
+      auto Jvi  = BaseType::template jacobian<1>();
+      auto Jpj  = BaseType::template jacobian<2>();
+      auto Jvj  = BaseType::template jacobian<3>();
+      auto Jbai = BaseType::template jacobian<4>();
+      auto Jbgi = BaseType::template jacobian<5>();
+
+      if constexpr (!slim) {
+        BaseType::template jacobian<6>().setZero();
+        BaseType::template jacobian<7>().setZero();
+        auto Jbaj                        = BaseType::template jacobian<6>();
+        auto Jbgj                        = BaseType::template jacobian<7>();
+        Jbaj.template block<3, 3>(9, 0)  = Matrix3::Identity();
+        Jbgj.template block<3, 3>(12, 0) = Matrix3::Identity();
+        // now the jacobians related to the bias propagation
+        Jbai.template block<3, 3>(9, 0)  = -Matrix3::Identity();
+        Jbgi.template block<3, 3>(12, 0) = -Matrix3::Identity();
+      }
+
+      // jacobians related to delta_p_, which starts at the 6th row
+      Jpi.template block<3, 3>(6, 3) = geometry3d::skew(
+        (R_i.transpose() * (p_j - p_i - v_i * dT_ - 0.5 * grav_ * dT_ * dT_)).eval());
+
+      Jpi.template block<3, 3>(6, 0) = -Matrix3::Identity();
+
+      Jvi.template block<3, 3>(6, 0) = -R_i.transpose() * dT_;
+
+      Jbai.template block<3, 3>(6, 0) = -dp_db_acc_;
+
+      Jpj.template block<3, 3>(6, 0) = R_i.transpose() * R_j;
+
+      Jbgi.template block<3, 3>(6, 0) = -dp_db_gyro_;
+
+      // jacobians related to delta_v_
+      Jpi.template block<3, 3>(3, 3) =
+        geometry3d::skew((R_i.transpose() * (v_j - v_i - grav_ * dT_)).eval());
+
+      Jvi.template block<3, 3>(3, 0) = -R_i.transpose();
+
+      Jbai.template block<3, 3>(3, 0) = -dv_db_acc_;
+
+      Jvj.template block<3, 3>(3, 0) = R_i.transpose();
+
+      Jbgi.template block<3, 3>(3, 0) = -dv_db_gyro_;
+
+      // jacobians related to delta_R_
+      Vector3 r_phi                  = error.head(3);
+      Matrix3 Jinv                   = jacobianExpMapSO3inv(r_phi);
+      Jpi.template block<3, 3>(0, 3) = -Jinv * R_j.transpose() * R_i;
+
+      Jpj.template block<3, 3>(0, 3) = Jinv;
+
+      Jbgi.template block<3, 3>(0, 0) =
+        -Jinv * geometry3d::expMapSO3(r_phi).transpose() *
+        geometry3d::jacobianExpMapSO3((dR_db_gyro_ * delta_bgyro).eval()) * dR_db_gyro_;
+    }
+
+    return error; // suppress warning
+  }
+
+  template <typename Scalar_, typename BaseType_>
   void srrg2_solver::ImuPreintegrationFactorBase<Scalar_, BaseType_>::setMeasurement(
     test_imu::ImuPreintegratorBase& preintegrator) {
     using srrg2_core::ad::convertMatrix;
@@ -82,105 +218,22 @@ namespace srrg2_solver {
     BaseType_::setInformationMatrix(preintegrator.sigma().inverse());
   }
 
+  void ImuPreintegrationFactor::errorAndJacobian(bool error_only_) {
+    computeResiduals(_variables, error_only_);
+  }
+
+  void ImuPreintegrationFactorSlim::errorAndJacobian(bool error_only_) {
+    computeResiduals(_variables, error_only_);
+  }
+
   ImuPreintegrationFactorAD::ADErrorVectorType
   ImuPreintegrationFactorAD::operator()(ImuPreintegrationFactorAD::VariableTupleType& vars) {
-    const Isometry3& T_i = vars.at<0>()->adEstimate() * offset_;
-    const Matrix3& R_i   = T_i.linear();
-    const Vector3& p_i   = T_i.translation();
-    const Vector3& v_i   = vars.at<1>()->adEstimate();
-
-    const Isometry3& T_j = vars.at<2>()->adEstimate() * offset_;
-    const Matrix3& R_j   = T_j.linear();
-    const Vector3& p_j   = T_j.translation();
-    const Vector3& v_j   = vars.at<3>()->adEstimate();
-
-    const Vector3& bias_acc_i  = vars.at<4>()->adEstimate();
-    const Vector3& bias_gyro_i = vars.at<5>()->adEstimate();
-    const Vector3& bias_acc_j  = vars.at<6>()->adEstimate();
-    const Vector3& bias_gyro_j = vars.at<7>()->adEstimate();
-
-    ADErrorVectorType error;
-
-    // bias correction via first order approximation around nominal values
-    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
-
-    // orientation error
-    error.segment<3>(0) = geometry3d::logMapSO3(
-      ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
-       R_i.transpose() * R_j)
-        .eval());
-    // velocity error
-    error.segment<3>(3) = R_i.transpose() * (v_j - v_i - grav_ * dT_) -
-                          (delta_v_ + dv_db_acc_ * delta_bacc + dv_db_gyro_ * delta_bgyro);
-    // position error
-    error.segment<3>(6) =
-      R_i.transpose() * (p_j - p_i - v_i * dT_ - DualValuef(0.5) * grav_ * dT_ * dT_) -
-      (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
-
-    error.segment<3>(9)  = bias_acc_j - bias_acc_i;
-    error.segment<3>(12) = bias_gyro_j - bias_gyro_i;
-
-    /*     std::cout << "error:\n"
-                  << error(0).value << " " << error(1).value << " " << error(2).value << " "
-                  << error(3).value << " " << error(4).value << " " << error(5).value << " "
-                  << error(6).value << " " << error(7).value << " " << error(8).value << " "
-                  << "\n";
-     */
-    return error;
+    return computeResiduals(vars, true);
   }
 
   ImuPreintegrationFactorSlimAD::ADErrorVectorType ImuPreintegrationFactorSlimAD::operator()(
     ImuPreintegrationFactorSlimAD::VariableTupleType& vars) {
-    const Isometry3& T_i = vars.at<0>()->adEstimate() * offset_;
-    const Matrix3& R_i   = T_i.linear();
-    const Vector3& p_i   = T_i.translation();
-
-    // there should be a component depending on angular velocity
-    const Vector3& v_i = vars.at<1>()->adEstimate();
-
-    const Isometry3& T_j = vars.at<2>()->adEstimate() * offset_;
-    const Matrix3& R_j   = T_j.linear();
-    const Vector3& p_j   = T_j.translation();
-    const Vector3& v_j   = vars.at<3>()->adEstimate();
-
-    const Vector3& bias_acc_i  = vars.at<4>()->adEstimate();
-    const Vector3& bias_gyro_i = vars.at<5>()->adEstimate();
-
-    ADErrorVectorType error;
-
-    // bias correction via first order approximation around nominal values
-    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
-
-    // orientation error
-    error.segment<3>(0) = geometry3d::logMapSO3(
-      ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
-       R_i.transpose() * R_j)
-        .eval());
-    // velocity error
-    error.segment<3>(3) = R_i.transpose() * (v_j - v_i - grav_ * dT_) -
-                          (delta_v_ + dv_db_acc_ * delta_bacc + dv_db_gyro_ * delta_bgyro);
-    // position error
-    error.segment<3>(6) =
-      R_i.transpose() * (p_j - p_i - v_i * dT_ - DualValuef(0.5) * grav_ * dT_ * dT_) -
-      (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
-
-    return error;
-  }
-
-  BiasErrorFactorAD::ADErrorVectorType BiasErrorFactorAD::operator()(VariableTupleType& vars) {
-    const dVector3f& bias_acc_i  = vars.at<0>()->adEstimate();
-    const dVector3f& bias_gyro_i = vars.at<1>()->adEstimate();
-    const dVector3f& bias_acc_j  = vars.at<2>()->adEstimate();
-    const dVector3f& bias_gyro_j = vars.at<3>()->adEstimate();
-
-    ADErrorVectorType error;
-
-    error.segment<3>(0) = bias_acc_j - bias_acc_i;
-    error.segment<3>(3) = bias_gyro_j - bias_gyro_i;
-
-    return error;
+    return computeResiduals(vars, true);
   }
 
   void BiasErrorFactor::errorAndJacobian(bool error_only_) {
@@ -208,221 +261,20 @@ namespace srrg2_solver {
     Jbgi.block<3, 3>(3, 0) = -Matrix3f::Identity();
   }
 
-  void ImuPreintegrationFactor::errorAndJacobian(bool error_only_) {
-    const Isometry3f& T_i = _variables.at<0>()->estimate() * offset_;
-    const Matrix3& R_i    = T_i.linear();
-    const Vector3& p_i    = T_i.translation();
-    const Vector3& v_i    = _variables.at<1>()->estimate();
+  BiasErrorFactorAD::ADErrorVectorType BiasErrorFactorAD::operator()(VariableTupleType& vars) {
+    const dVector3f& bias_acc_i  = vars.at<0>()->adEstimate();
+    const dVector3f& bias_gyro_i = vars.at<1>()->adEstimate();
+    const dVector3f& bias_acc_j  = vars.at<2>()->adEstimate();
+    const dVector3f& bias_gyro_j = vars.at<3>()->adEstimate();
 
-    const Isometry3f& T_j = _variables.at<2>()->estimate() * offset_;
-    const Matrix3& R_j    = T_j.linear();
-    const Vector3& p_j    = T_j.translation();
-    const Vector3& v_j    = _variables.at<3>()->estimate();
+    ADErrorVectorType error;
 
-    const Vector3& bias_acc_i  = _variables.at<4>()->estimate();
-    const Vector3& bias_gyro_i = _variables.at<5>()->estimate();
-    const Vector3& bias_acc_j  = _variables.at<6>()->estimate();
-    const Vector3& bias_gyro_j = _variables.at<7>()->estimate();
+    error.segment<3>(0) = bias_acc_j - bias_acc_i;
+    error.segment<3>(3) = bias_gyro_j - bias_gyro_i;
 
-    // bias correction via first order approximation around nominal values
-    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
-
-    _e.segment<3>(0) = geometry3d::logMapSO3(
-      ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
-       R_i.transpose() * R_j)
-        .eval());
-    // velocity error
-    _e.segment<3>(3) = R_i.transpose() * (v_j - v_i - grav_ * dT_) -
-                       (delta_v_ + dv_db_acc_ * delta_bacc + dv_db_gyro_ * delta_bgyro);
-    // position error
-    _e.segment<3>(6) =
-      R_i.transpose() * (p_j - p_i - v_i * dT_ - DualValuef(0.5) * grav_ * dT_ * dT_) -
-      (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
-
-    _e.segment<3>(9)  = (bias_acc_j - bias_acc_i);
-    _e.segment<3>(12) = (bias_gyro_j - bias_gyro_i);
-
-    if (error_only_)
-      return;
-
-    // std::cout << "error: " << _e.transpose() << "\n";
-
-    // check if this is necessary
-    // std::cout <<jacobian<0>() << "\n";
-    jacobian<0>().setZero();
-    jacobian<1>().setZero();
-    jacobian<2>().setZero();
-    jacobian<3>().setZero();
-    jacobian<4>().setZero();
-    jacobian<5>().setZero();
-    jacobian<6>().setZero();
-    jacobian<7>().setZero();
-
-    // jacobians of delta_p_
-    auto Jpi  = jacobian<0>(); // 15x6
-    auto Jvi  = jacobian<1>(); // 15x3
-    auto Jpj  = jacobian<2>(); // 15x6
-    auto Jvj  = jacobian<3>(); // 15x3
-    auto Jbai = jacobian<4>(); // 15x3
-    auto Jbgi = jacobian<5>(); // 15x3
-    auto Jbaj = jacobian<6>(); // 15x3
-    auto Jbgj = jacobian<7>(); // 15x3
-
-    // jacobians related to delta_p_, which starts at the 6th row
-    Jpi.block<3, 3>(6, 3) = geometry3d::skew(
-      (R_i.transpose() * (p_j - p_i - v_i * dT_ - 0.5 * grav_ * dT_ * dT_)).eval());
-
-    Jpi.block<3, 3>(6, 0) = -Matrix3::Identity();
-
-    Jvi.block<3, 3>(6, 0) = -R_i.transpose() * dT_;
-
-    Jbai.block<3, 3>(6, 0) = -dp_db_acc_;
-
-    Jpj.block<3, 3>(6, 0) = R_i.transpose() * R_j;
-
-    Jbgi.block<3, 3>(6, 0) = -dp_db_gyro_;
-
-    // jacobians related to delta_v_
-    Jpi.block<3, 3>(3, 3) = geometry3d::skew((R_i.transpose() * (v_j - v_i - grav_ * dT_)).eval());
-
-    Jvi.block<3, 3>(3, 0) = -R_i.transpose();
-
-    Jbai.block<3, 3>(3, 0) = -dv_db_acc_;
-
-    Jvj.block<3, 3>(3, 0) = R_i.transpose();
-
-    Jbgi.block<3, 3>(3, 0) = -dv_db_gyro_;
-
-    // jacobians related to delta_R_
-    Vector3 r_phi         = _e.segment<3>(0);
-    Matrix3 Jinv          = jacobianExpMapSO3inv(r_phi);
-    Jpi.block<3, 3>(0, 3) = -Jinv * R_j.transpose() * R_i;
-
-    Jpj.block<3, 3>(0, 3) = Jinv;
-
-    Jbgi.block<3, 3>(0, 0) = -Jinv * geometry3d::expMapSO3(r_phi).transpose() *
-                             geometry3d::jacobianExpMapSO3((dR_db_gyro_ * delta_bgyro).eval()) *
-                             dR_db_gyro_;
-
-    // now the jacobians related to the bias propagation
-    Jbaj.block<3, 3>(9, 0)  = Matrix3::Identity();
-    Jbgj.block<3, 3>(12, 0) = Matrix3::Identity();
-
-    Jbai.block<3, 3>(9, 0)  = -Matrix3::Identity();
-    Jbgi.block<3, 3>(12, 0) = -Matrix3::Identity();
-
-    /*     // adjust for offset
-        Jpi *= pert_J_;
-        Jpj *= pert_J_;
-        // velocities perturbation are just rotated
-        Jvi *= offset_.linear().transpose();
-        Jvj *= offset_.linear().transpose(); */
-
-    // biases are untransformed
-
-    return;
+    return error;
   }
 
-  void ImuPreintegrationFactorSlim::errorAndJacobian(bool error_only_) {
-    const Isometry3f& T_i = _variables.at<0>()->estimate() * offset_;
-    const Matrix3& R_i    = T_i.linear();
-    const Vector3& p_i    = T_i.translation();
-    const Vector3& v_i    = _variables.at<1>()->estimate();
-
-    const Isometry3f& T_j = _variables.at<2>()->estimate() * offset_;
-    const Matrix3& R_j    = T_j.linear();
-    const Vector3& p_j    = T_j.translation();
-    const Vector3& v_j    = _variables.at<3>()->estimate();
-
-    const Vector3& bias_acc_i  = _variables.at<4>()->estimate();
-    const Vector3& bias_gyro_i = _variables.at<5>()->estimate();
-
-    // bias correction via first order approximation around nominal values
-    const Vector3 delta_bacc  = bias_acc_i - bias_acc_nom_;
-    const Vector3 delta_bgyro = bias_gyro_i - bias_gyro_nom_;
-
-    _e.segment<3>(0) = geometry3d::logMapSO3(
-      ((delta_R_ * geometry3d::expMapSO3((dR_db_gyro_ * delta_bgyro).eval())).transpose() *
-       R_i.transpose() * R_j)
-        .eval());
-    // velocity error
-    _e.segment<3>(3) = R_i.transpose() * (v_j - v_i - grav_ * dT_) -
-                       (delta_v_ + dv_db_acc_ * delta_bacc + dv_db_gyro_ * delta_bgyro);
-    // position error
-    _e.segment<3>(6) =
-      R_i.transpose() * (p_j - p_i - v_i * dT_ - DualValuef(0.5) * grav_ * dT_ * dT_) -
-      (delta_p_ + dp_db_acc_ * delta_bacc + dp_db_gyro_ * delta_bgyro);
-
-    if (error_only_)
-      return;
-
-    // std::cout << "error: " << _e.transpose() << "\n";
-
-    // check if this is necessary
-    // std::cout <<jacobian<0>() << "\n";
-    jacobian<0>().setZero();
-    jacobian<1>().setZero();
-    jacobian<2>().setZero();
-    jacobian<3>().setZero();
-    jacobian<4>().setZero();
-    jacobian<5>().setZero();
-
-    // jacobians of delta_p_
-    auto Jpi  = jacobian<0>(); // 15x6
-    auto Jvi  = jacobian<1>(); // 15x3
-    auto Jpj  = jacobian<2>(); // 15x6
-    auto Jvj  = jacobian<3>(); // 15x3
-    auto Jbai = jacobian<4>(); // 15x3
-    auto Jbgi = jacobian<5>(); // 15x3
-
-    // jacobians related to delta_p_, which starts at the 6th row
-    Jpi.block<3, 3>(6, 3) = geometry3d::skew(
-      (R_i.transpose() * (p_j - p_i - v_i * dT_ - 0.5 * grav_ * dT_ * dT_)).eval());
-
-    Jpi.block<3, 3>(6, 0) = -Matrix3::Identity();
-
-    Jvi.block<3, 3>(6, 0) = -R_i.transpose() * dT_;
-
-    Jbai.block<3, 3>(6, 0) = -dp_db_acc_;
-
-    Jpj.block<3, 3>(6, 0) = R_i.transpose() * R_j;
-
-    Jbgi.block<3, 3>(6, 0) = -dp_db_gyro_;
-
-    // jacobians related to delta_v_
-    Jpi.block<3, 3>(3, 3) = geometry3d::skew((R_i.transpose() * (v_j - v_i - grav_ * dT_)).eval());
-
-    Jvi.block<3, 3>(3, 0) = -R_i.transpose();
-
-    Jbai.block<3, 3>(3, 0) = -dv_db_acc_;
-
-    Jvj.block<3, 3>(3, 0) = R_i.transpose();
-
-    Jbgi.block<3, 3>(3, 0) = -dv_db_gyro_;
-
-    // jacobians related to delta_R_
-    Vector3 r_phi         = _e.segment<3>(0);
-    Matrix3 Jinv          = jacobianExpMapSO3inv(r_phi);
-    Jpi.block<3, 3>(0, 3) = -Jinv * R_j.transpose() * R_i;
-
-    Jpj.block<3, 3>(0, 3) = Jinv;
-
-    Jbgi.block<3, 3>(0, 0) = -Jinv * geometry3d::expMapSO3(r_phi).transpose() *
-                             geometry3d::jacobianExpMapSO3((dR_db_gyro_ * delta_bgyro).eval()) *
-                             dR_db_gyro_;
-
-    /*     // adjust for offset
-        Jpi *= pert_J_;
-        Jpj *= pert_J_;
-        // velocities perturbation are just rotated
-        Jvi *= offset_.linear().transpose();
-        Jvj *= offset_.linear().transpose(); */
-
-    // biases are untransformed
-
-    return;
-  }
   template <typename Scalar_, typename BaseType_>
   void ImuPreintegrationFactorBase<Scalar_, BaseType_>::_drawImpl(ViewerCanvasPtr canvas_) const {
     Vector3f coords[2];
