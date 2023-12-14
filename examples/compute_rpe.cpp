@@ -14,9 +14,6 @@ using namespace std;
 
 // static parameter
 // float lengths[] = {5,10,50,100,150,200,250,300,350,400};
-float lengths[]    = {100, 200, 300, 400, 500, 600, 700, 800};
-size_t num_lengths = 8;
-
 struct errors {
   size_t first_frame;
   float r_err;
@@ -114,7 +111,8 @@ inline float translationError(const Eigen::Isometry3f& pose_error) {
 }
 
 vector<errors> calcSequenceErrors(vector<Eigen::Isometry3f>& poses_gt,
-                                  vector<Eigen::Isometry3f>& poses_result) {
+                                  vector<Eigen::Isometry3f>& poses_result,
+                                  int len) {
   // error vector
   vector<errors> err;
 
@@ -127,10 +125,7 @@ vector<errors> calcSequenceErrors(vector<Eigen::Isometry3f>& poses_gt,
   // for all start positions do
   for (size_t first_frame = 0; first_frame < poses_gt.size(); first_frame += step_size) {
     // for all segment lengths do
-    for (size_t i = 0; i < num_lengths; i++) {
-      // current length
-      float len = lengths[i];
-
+    for (size_t i = 0; i < 1; i++) {
       // compute last frame
       size_t last_frame = lastFrameFromSegmentLength(dist, first_frame, len);
 
@@ -161,12 +156,13 @@ vector<errors> calcSequenceErrors(vector<Eigen::Isometry3f>& poses_gt,
 
 int main(int argc, char* argv[]) {
   // ground truth and result directories
-  if (argc != 3) {
-    throw std::runtime_error("compute_rpe pred.csv gt.csv");
+  if (argc != 4) {
+    throw std::runtime_error("compute_rpe len pred.csv gt.csv");
   }
 
-  string gt_dir(argv[2]);
-  string result_dir(argv[1]);
+  int len = std::stoi(argv[1]);
+  string gt_dir(argv[3]);
+  string result_dir(argv[2]);
 
   // read ground truth and result poses
   std::cout << "loading gt\n";
@@ -183,10 +179,12 @@ int main(int argc, char* argv[]) {
 
   // compute sequence errors
   std::cout << "computing errors\n";
-  vector<errors> seq_err = calcSequenceErrors(poses_gt, poses_result);
+  vector<errors> seq_err = calcSequenceErrors(poses_gt, poses_result, len);
 
-  ofstream t_err("t_err.txt");
-  ofstream r_err("r_err.txt");
+  std::string t_err_filename = "t_err_" + std::string(argv[1]) + ".txt";
+  std::string r_err_filename = "r_err_" + std::string(argv[1]) + ".txt";
+  ofstream t_err(t_err_filename);
+  ofstream r_err(r_err_filename);
 
   for (size_t i = 0; i < seq_err.size(); ++i) {
     const errors& e = seq_err.at(i);
