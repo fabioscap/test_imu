@@ -5,6 +5,17 @@
 
 #include <srrg_solver/solver_core/instance_macros.h>
 
+#define P_i 0
+#define PHI_i 3
+#define V_i 6
+#define P_j 9
+#define PHI_j 12
+#define V_j 15
+#define BA_i 18
+#define BG_i 21
+#define BA_j 24
+#define BG_j 27
+
 namespace srrg2_solver {
 
   template class ImuPreintegrationFactorBase<float,
@@ -79,9 +90,9 @@ namespace srrg2_solver {
     constexpr bool ad   = std::is_same<Scalar_, DualValuef>::value;
 
     // get the variables
-    const Isometry3 T_i = getEstimateAt<0, ad>(vars);
+    const Isometry3 T_i = getEstimateAt<0, ad>(vars) * offset_;
     const Vector3 v_i   = getEstimateAt<1, ad>(vars);
-    const Isometry3 T_j = getEstimateAt<2, ad>(vars);
+    const Isometry3 T_j = getEstimateAt<2, ad>(vars) * offset_;
     const Vector3 v_j   = getEstimateAt<3, ad>(vars);
     const Vector3 ba_i  = getEstimateAt<4, ad>(vars);
     const Vector3 bg_i  = getEstimateAt<5, ad>(vars);
@@ -190,6 +201,25 @@ namespace srrg2_solver {
       Jbgi.template block<3, 3>(0, 0) =
         -Jinv * geometry3d::expMapSO3(r_phi).transpose() *
         geometry3d::jacobianExpMapSO3((dR_db_gyro_ * delta_bgyro).eval()) * dR_db_gyro_;
+
+      // offset jacobians
+      const Matrix3& Rt  = offset_.linear().transpose();
+      const Vector3& tbi = offset_.translation();
+
+      J_pert_.setIdentity();
+      J_pert_.template block<3, 3>(P_i, P_i)     = Rt;
+      J_pert_.template block<3, 3>(P_i, PHI_i)   = -Rt * geometry3d::skew(tbi);
+      J_pert_.template block<3, 3>(PHI_i, PHI_i) = Rt;
+      J_pert_.template block<3, 3>(V_i, PHI_i) =
+        -R_i * geometry3d::skew(omega_i_.cross(tbi).eval());
+
+      J_pert_.template block<3, 3>(P_j, P_j)     = Rt;
+      J_pert_.template block<3, 3>(P_j, PHI_j)   = -Rt * geometry3d::skew(tbi);
+      J_pert_.template block<3, 3>(PHI_j, PHI_j) = Rt;
+      J_pert_.template block<3, 3>(V_j, PHI_j) =
+        -R_j * geometry3d::skew(omega_j_.cross(tbi).eval());
+
+      BaseType::_J = BaseType::_J * J_pert_;
     }
 
     return error; // suppress warning
@@ -216,6 +246,22 @@ namespace srrg2_solver {
 
     dT_ = Scalar_(preintegrator.dT());
     BaseType_::setInformationMatrix(preintegrator.sigma().inverse());
+
+    convertMatrix(
+      omega_i_,
+      (preintegrator.measurements().front().angular_vel - preintegrator.bias_gyro()).eval());
+    convertMatrix(
+      omega_j_,
+      (preintegrator.measurements().back().angular_vel - preintegrator.bias_gyro()).eval());
+  }
+
+  template <typename Scalar_, typename BaseType_>
+  void ImuPreintegrationFactorBase<Scalar_, BaseType_>::setOffset(const Isometry3f& offset) {
+    srrg2_core::ad::convertMatrix(offset_, offset);
+
+    /*     constexpr bool slim = (BaseType_::ErrorDim == 9);
+        constexpr bool ad   = std::is_same<Scalar_, DualValuef>::value;
+     */
   }
 
   void ImuPreintegrationFactor::errorAndJacobian(bool error_only_) {

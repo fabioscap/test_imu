@@ -31,9 +31,7 @@ namespace srrg2_solver {
 
     void setMeasurement(test_imu::ImuPreintegratorBase& preintegrator);
 
-    inline void setOffset(const Isometry3f& offset) {
-      srrg2_core::ad::convertMatrix(offset_, offset);
-    }
+    void setOffset(const Isometry3f& offset);
 
     inline void setGrav(const Vector3f& grav) {
       srrg2_core::ad::convertMatrix(grav_, grav);
@@ -69,6 +67,12 @@ namespace srrg2_solver {
     Vector3 grav_;
 
     Isometry3 offset_ = Isometry3::Identity(); // imu in body
+
+    // I need these two to transform the angular vel
+    Vector3 omega_i_, omega_j_;
+
+    // jacobian which accounts for the offset between body and IMU
+    MatrixN_<Scalar_, BaseType_::TotalPerturbationDim> J_pert_;
   };
 
   class ImuPreintegrationFactor
