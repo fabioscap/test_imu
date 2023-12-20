@@ -149,14 +149,15 @@ int main(int argc, char* argv[]) {
   // double t_offset = gps_measurements[0].time;
   size_t first_gps = 4;
   size_t gps_skip  = 4; // Skip this many GPS measurements each time
-  double g         = -9.8;
-  auto w_coriolis  = Vector3::Zero(); // zero vector
+
+  double g        = -9.8;
+  auto w_coriolis = Vector3::Zero(); // zero vector
 
   LevenbergMarquardtParams parameters;
   parameters.setDiagonalDamping(false);
-  parameters.setlambdaInitial(1e3);
+  parameters.setlambdaInitial(1000);
   parameters.setlambdaFactor(1.0);
-  parameters.setMaxIterations(50);
+  parameters.setMaxIterations(500);
 
   // Configure noise models
   auto noise_model_gps =

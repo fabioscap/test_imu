@@ -40,7 +40,7 @@ struct Sigmas {
   float bias_acc  = 0.000167f;
   float bias_gyro = 2.91e-006f;
 
-  Vector3f gps = Vector3f(10, 10, 90);
+  Vector3f gps = Vector3f(1, 1, 9);
 } sigmas;
 
 bool string_in_array(const string& query, int argc, char* argv[]) {
@@ -55,7 +55,7 @@ void loadNCLTData(vector<ImuMeasurement>& imu_measurements,
                   vector<GpsMeasurement>& gps_measurements);
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
-  const int window_size = 32;
+  const int window_size = 0;
   const int gps_skip    = 4;
 
   const int first_gps = 3;
@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
   // inspect covariances
-  // ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
+  ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
   // ofstream det_dump("/workspace/src/test_imu/determinant.txt");
 
   variables_and_factors_3d_registerTypes();
@@ -93,11 +93,12 @@ int main(int argc, char* argv[]) {
   IterationAlgorithmBasePtr alg(new AlgorithmType);
   std::shared_ptr<AlgorithmType> temp = std::dynamic_pointer_cast<AlgorithmType>(alg);
 
-  temp->param_damping.setValue(1e3);
-  // temp->param_user_lambda_init.setValue(1e3);
+  temp->param_damping.setValue(100);
+  // temp->param_user_lambda_init.setValue(20);
+  // temp->param_variable_damping.setValue(false);
 
   solver.param_algorithm.setValue(alg);
-  solver.param_verbose.setValue(true);
+  // solver.param_verbose.setValue(true);
   FactorGraphPtr graph(new FactorGraph);
 
   using VarPoseImuType    = VariableSE3ExpMapRight;
@@ -332,7 +333,7 @@ int main(int argc, char* argv[]) {
     if (use_gps) {
       graph->addFactor(FactorBasePtr(gps_factor));
     }
-    // cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
+    cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
     //  cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
     // det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
@@ -340,31 +341,36 @@ int main(int argc, char* argv[]) {
     // local optimization
     FactorGraphView local_window;
 
-    while (pose_local_ids.size() > window_size) {
-      variable_ids.erase(pose_local_ids.front());
-      variable_ids.erase(vel_local_ids.front());
-      variable_ids.erase(acc_bias_local_ids.front());
-      variable_ids.erase(gyro_bias_local_ids.front());
-      pose_local_ids.pop();
-      vel_local_ids.pop();
-      acc_bias_local_ids.pop();
-      gyro_bias_local_ids.pop();
+    if (window_size > 0) {
+      while (pose_local_ids.size() > window_size) {
+        variable_ids.erase(pose_local_ids.front());
+        variable_ids.erase(vel_local_ids.front());
+        variable_ids.erase(acc_bias_local_ids.front());
+        variable_ids.erase(gyro_bias_local_ids.front());
+        pose_local_ids.pop();
+        vel_local_ids.pop();
+        acc_bias_local_ids.pop();
+        gyro_bias_local_ids.pop();
+      }
+
+      local_window.addVariables(*graph, variable_ids);
+      // we fix the first variables to remove degrees of freedom
+      // especially important with slim factors
+      local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+      local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+      local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+      local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
+
+      if (use_imu) {
+        solver.setGraph(local_window);
+        solver.compute();
+      }
+    } else {
+      if (use_imu) {
+        solver.setGraph(graph);
+        solver.compute();
+      }
     }
-
-    local_window.addVariables(*graph, variable_ids);
-
-    // we fix the first variables to remove degrees of freedom
-    // especially important with slim factors
-    local_window.variable(pose_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(vel_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(acc_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-    local_window.variable(gyro_bias_local_ids.front())->setStatus(VariableBase::Status::Fixed);
-
-    if (use_imu) {
-      solver.setGraph(local_window);
-      solver.compute();
-    }
-    std::cout << gps_factor->totalJacobian() << "\n";
 
     std::cout << solver.iterationStats() << std::endl;
 
@@ -400,7 +406,7 @@ int main(int argc, char* argv[]) {
     std::cout << "graph written in " << boss_graph_filename << std::endl;
   }
   // dumper.close();
-  // cov_dump.close();
+  cov_dump.close();
   // det_dump.close();
 
   std::ofstream fp_out(std::string(PROJECT_FOLDER) + "/nclt.csv");
