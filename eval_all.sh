@@ -36,7 +36,7 @@ for folder in "${folders[@]}"; do
       set title 'Orientation RPE';
       set output 'eval/${folder}/${seq}/r_err.png';
       set xlabel 'poses';
-      set ylabel 'error [deg]';
+      set ylabel 'error [deg/m]';
       plot 'eval/${folder}/${seq}/r_err.txt' with lines, 'eval/gtsam/${seq}/r_err.txt' with lines;";
                 
   done
