@@ -74,6 +74,11 @@ int main(int argc, char* argv[]) {
   bool use_slim = string_in_array("slim", argc, argv);
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
+  if (string_in_array("ukf_slim", argc, argv)) {
+    use_slim = true;
+    use_ukf  = true;
+  }
+
   // inspect covariances
   ofstream cov_dump("/workspace/src/test_imu/covariance.txt");
   // ofstream det_dump("/workspace/src/test_imu/determinant.txt");

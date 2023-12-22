@@ -51,7 +51,7 @@ struct GpsMeasurement {
   Vector3 position; // x,y,z
 };
 
-const string output_filename = "/workspace/src/test_imu/nclt_gtsam.csv";
+const string output_filename = "/workspace/src/test_imu/synthetic_gtsam.csv";
 
 struct Sigmas {
   float acc       = 0.00175f;
@@ -123,7 +123,6 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
   }
 }
 int main(int argc, char* argv[]) {
-  // DOES NOT WORK: ILL CONDITIONED SYSTEM
   Values result;
 
   vector<ImuMeasurement> imu_measurements;
