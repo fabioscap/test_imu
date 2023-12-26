@@ -40,7 +40,7 @@ namespace test_imu {
   protected:
     DeltaManifold delta_incr_;
 
-    CovJType sigma_joint_                              = 1e-10 * CovJType::Identity();
+    CovJType sigma_joint_                              = 1e-6 * CovJType::Identity();
     core::Vector_<Scalar, input_dim> input_noise_diag_ = core::Vector_<Scalar, input_dim>::Zero();
     core::Vector_<Scalar, input_dim> bias_noise_diag_  = core::Vector_<Scalar, input_dim>::Zero();
 
@@ -80,7 +80,7 @@ namespace test_imu {
   protected:
     DeltaManifold delta_incr_;
 
-    CovJType sigma_joint_                              = 1e-10 * CovJType::Identity();
+    CovJType sigma_joint_                              = 1e-6 * CovJType::Identity();
     core::Vector_<Scalar, input_dim> input_noise_diag_ = core::Vector_<Scalar, input_dim>::Zero();
 
     // container for sigma points

@@ -61,6 +61,7 @@ namespace test_imu {
                   const Vector3& acc, // unbiased
                   float dt);
 
+    // fix the starting state and apply the delta increments
     void getPrediction(const core::Isometry3f& Ti,
                        const core::Vector3f& vi,
                        core::Isometry3f& Tf,
@@ -68,10 +69,10 @@ namespace test_imu {
 
     inline virtual const BiasJacobians& biasJacobians() const {
       return bias_J_;
-    } // don't estimate biases by default
+    }
 
   protected:
-    /* override these three functions */
+    /* override these functions */
     virtual void preintegrate_(const ImuMeasurement&, Scalar dt) = 0;
     virtual void reset_()                                        = 0;
 

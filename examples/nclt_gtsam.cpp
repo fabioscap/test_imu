@@ -155,9 +155,9 @@ int main(int argc, char* argv[]) {
 
   LevenbergMarquardtParams parameters;
   parameters.setDiagonalDamping(false);
-  parameters.setlambdaInitial(1000);
+  parameters.setlambdaInitial(100);
   parameters.setlambdaFactor(1.0);
-  parameters.setMaxIterations(500);
+  parameters.setMaxIterations(50);
 
   // Configure noise models
   auto noise_model_gps =

@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
   VarVelImuType* prev_vel_var = new VarVelImuType();
   prev_vel_var->setEstimate(Vector3f::Zero());
   prev_vel_var->setGraphId(1);
-  // prev_vel_var->setStatus(VariableBase::Status::Fixed);
+  prev_vel_var->setStatus(VariableBase::Status::Fixed);
   graph->addVariable(VariableBasePtr(prev_vel_var));
   vel_local_ids.push(prev_vel_var->graphId());
   variable_ids.insert(prev_vel_var->graphId());
@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
   ImuBiasVar* prev_bias_acc = new ImuBiasVar();
   prev_bias_acc->setGraphId(2);
   prev_bias_acc->setEstimate(0 * Vector3f::Ones());
-  // prev_bias_acc->setStatus(VariableBase::Fixed);
+  prev_bias_acc->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_acc));
   acc_bias_local_ids.push(prev_bias_acc->graphId());
   variable_ids.insert(prev_bias_acc->graphId());
@@ -165,7 +165,7 @@ int main(int argc, char* argv[]) {
   ImuBiasVar* prev_bias_gyro = new ImuBiasVar();
   prev_bias_gyro->setGraphId(3);
   prev_bias_gyro->setEstimate(0 * Vector3f::Ones());
-  // prev_bias_gyro->setStatus(VariableBase::Fixed);
+  prev_bias_gyro->setStatus(VariableBase::Fixed);
   graph->addVariable(VariableBasePtr(prev_bias_gyro));
   gyro_bias_local_ids.push(prev_bias_gyro->graphId());
   variable_ids.insert(prev_bias_gyro->graphId());
@@ -269,16 +269,17 @@ int main(int argc, char* argv[]) {
     ImuBiasVar* curr_bias_gyro = new ImuBiasVar();
     curr_bias_acc->setGraphId(graph_id++);
     curr_bias_gyro->setGraphId(graph_id++);
-    curr_bias_acc->setEstimate(Vector3f::Zero());
-    curr_bias_gyro->setEstimate(Vector3f::Zero());
+    curr_bias_acc->setEstimate(prev_bias_acc->estimate());
+    curr_bias_gyro->setEstimate(prev_bias_gyro->estimate());
     graph->addVariable(VariableBasePtr(curr_bias_acc));
+    //  curr_bias_acc->setStatus(VariableBase::Fixed);
     acc_bias_local_ids.push(curr_bias_acc->graphId());
     variable_ids.insert(curr_bias_acc->graphId());
 
     graph->addVariable(VariableBasePtr(curr_bias_gyro));
     gyro_bias_local_ids.push(curr_bias_gyro->graphId());
     variable_ids.insert(curr_bias_gyro->graphId());
-
+    //  curr_bias_gyro->setStatus(VariableBase::Fixed);
     std::cout << "imu preintegrator has absorbed: " << imu_preintegrator->measurements().size()
               << " measurements.\n";
     if (use_imu) {

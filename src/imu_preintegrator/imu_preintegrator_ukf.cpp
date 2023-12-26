@@ -83,12 +83,12 @@ namespace test_imu {
     ut_.toMeanCov(spoints, delta_incr_, sigma_joint_);
 
     // add process noise
-    sigma_joint_.block<6, 6>(9, 9) += bias_noise_diag_.asDiagonal();
+    // sigma_joint_.block<6, 6>(9, 9) += bias_noise_diag_.asDiagonal();
   }
 
   void ImuPreintegratorUKF::reset_() {
     delta_incr_  = DeltaManifold();
-    sigma_joint_ = 1e-10 * CovJType::Identity();
+    sigma_joint_ = 1e-8 * CovJType::Identity();
 
     spoints = SigmaPoints<DeltaManifold>();
   }
@@ -132,7 +132,7 @@ namespace test_imu {
     /* bias correction jacobians */
     bias_J_.update(deltaR, acc_skew, dR, Jr, dt);
 
-    if (measurements().size() == 1 || true)
+    if (true || measurements().size() == 1)
       toUnscented_(dt);
 
     // for each sigma points we do forward dynamics
@@ -153,15 +153,16 @@ namespace test_imu {
 
       // side-effect on sigma points
       f(deltaR, deltaV, deltaP, dR, acc_c, dt);
-      // once we transform sigma points, mean and covariance are not updated
-      is_updated_ = false;
     }
+    // once we transform sigma points, mean and covariance are not updated
+    is_updated_ = false;
+
     toMeanCov_();
   }
 
   void ImuPreintegratorUKFSlim::reset_() {
     delta_incr_  = DeltaManifold();
-    sigma_joint_ = 1e-10 * CovJType::Identity();
+    sigma_joint_ = 1e-8 * CovJType::Identity();
 
     spoints = SigmaPoints<DeltaManifold>();
 

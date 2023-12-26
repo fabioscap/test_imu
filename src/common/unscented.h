@@ -47,7 +47,7 @@ namespace test_imu {
 
     WeightScheme weight_scheme_ = WeightScheme::UKF;
 
-    Scalar cov_regularizer_ = 1e-9;
+    Scalar cov_regularizer_ = 1e-10;
 
   private:
     template <typename StateType>
