@@ -140,6 +140,10 @@ int main(int argc, char* argv[]) {
   auto w_coriolis  = Vector3::Zero(); // zero vector
 
   LevenbergMarquardtParams parameters;
+  parameters.setDiagonalDamping(false);
+  parameters.setlambdaInitial(100);
+  parameters.setlambdaFactor(1.0);
+  parameters.setMaxIterations(50);
 
   parameters.setVerbosity("Summary");
 

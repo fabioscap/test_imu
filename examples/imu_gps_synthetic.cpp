@@ -56,7 +56,8 @@ struct GpsMeasurement {
 
 void generateData(std::vector<GpsMeasurement>& gps_measurements,
                   std::vector<test_imu::ImuMeasurement>& imu_measurements,
-                  Vector3f&);
+                  Vector3f&,
+                  bool dump_gt);
 
 bool string_in_array(const string& query, int argc, char* argv[]) {
   for (int i = 1; i < argc; ++i)
@@ -69,9 +70,9 @@ bool string_in_array(const string& query, int argc, char* argv[]) {
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
   const int window_size = 0;
-  const int gps_skip    = 4;
+  const int gps_skip    = 1;
 
-  const int first_gps = 3;
+  const int first_gps = 0;
 
   ofstream prediction_error("prediction_error.txt");
 
@@ -103,9 +104,9 @@ int main(int argc, char* argv[]) {
   vector<GpsMeasurement> gps_measurements;
 
   Vector3f vel0;
-  generateData(gps_measurements, imu_measurements, vel0);
+  generateData(gps_measurements, imu_measurements, vel0, true);
 
-  using AlgorithmType = IterationAlgorithmGN;
+  using AlgorithmType = IterationAlgorithmLM;
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
@@ -113,9 +114,9 @@ int main(int argc, char* argv[]) {
   IterationAlgorithmBasePtr alg(new AlgorithmType);
   std::shared_ptr<AlgorithmType> temp = std::dynamic_pointer_cast<AlgorithmType>(alg);
 
-  temp->param_damping.setValue(100);
-  // temp->param_user_lambda_init.setValue(20);
-  // temp->param_variable_damping.setValue(false);
+  // temp->param_damping.setValue(1000);
+  //  temp->param_user_lambda_init.setValue(20);
+  //  temp->param_variable_damping.setValue(false);
 
   solver.param_algorithm.setValue(alg);
   // solver.param_verbose.setValue(true);
@@ -135,7 +136,6 @@ int main(int argc, char* argv[]) {
 
   Isometry3f imu_in_body; // imu in gps_rtk
   imu_in_body.setIdentity();
-  imu_in_body.translation() << -0.11, -0.18, -0.71;
 
   const Vector3f& init_gps_pose = gps_measurements.at(first_gps).position;
   Isometry3f init_pose          = Isometry3f::Identity();
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
 
   size_t j                               = 0;
   size_t included_imu_measurements_count = 0;
-  for (size_t i = first_gps + 1; i < gps_measurements.size() / 8; i = i + gps_skip) {
+  for (size_t i = first_gps + 1; i < gps_measurements.size(); i = i + gps_skip) {
     int prev_idx = (i == first_gps + 1) ? first_gps : i - gps_skip;
 
     const double t_previous = gps_measurements.at(prev_idx).time;
@@ -284,16 +284,17 @@ int main(int argc, char* argv[]) {
     ImuBiasVar* curr_bias_gyro = new ImuBiasVar();
     curr_bias_acc->setGraphId(graph_id++);
     curr_bias_gyro->setGraphId(graph_id++);
-    curr_bias_acc->setEstimate(Vector3f::Zero());
-    curr_bias_gyro->setEstimate(Vector3f::Zero());
+    curr_bias_acc->setEstimate(prev_bias_acc->estimate());
+    curr_bias_gyro->setEstimate(prev_bias_gyro->estimate());
     graph->addVariable(VariableBasePtr(curr_bias_acc));
+    //  curr_bias_acc->setStatus(VariableBase::Fixed);
     acc_bias_local_ids.push(curr_bias_acc->graphId());
     variable_ids.insert(curr_bias_acc->graphId());
 
     graph->addVariable(VariableBasePtr(curr_bias_gyro));
     gyro_bias_local_ids.push(curr_bias_gyro->graphId());
     variable_ids.insert(curr_bias_gyro->graphId());
-
+    //  curr_bias_gyro->setStatus(VariableBase::Fixed);
     std::cout << "imu preintegrator has absorbed: " << imu_preintegrator->measurements().size()
               << " measurements.\n";
     if (use_imu) {
@@ -457,7 +458,8 @@ int main(int argc, char* argv[]) {
 
 void generateData(std::vector<GpsMeasurement>& gps_measurements,
                   std::vector<test_imu::ImuMeasurement>& imu_measurements,
-                  Vector3f& vel_zero) {
+                  Vector3f& vel_zero,
+                  bool dump_gt) {
   using TrajectoryType = test_imu::SE3EightTrajectory;
 
   // total time of trajectory
@@ -487,6 +489,10 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
 
   imu_measurements.clear();
   gps_measurements.clear();
+
+  std::ofstream pose_gt;
+  if (dump_gt)
+    pose_gt.open(std::string(PROJECT_FOLDER) + "/synthetic_gt.csv");
 
   for (size_t i = 0; i < data.size(); ++i) {
     // add the imu measurements to the vector
