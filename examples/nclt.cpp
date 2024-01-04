@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
   bool use_slim = string_in_array("slim", argc, argv);
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
-  if (string_in_array("ukf_slim", argc, argv)) {
+  if (string_in_array("ukfslim", argc, argv)) {
     use_slim = true;
     use_ukf  = true;
   }

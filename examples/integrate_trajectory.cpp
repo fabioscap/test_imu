@@ -17,7 +17,7 @@ int main() {
   std::ofstream out_pred("/workspace/src/test_imu/examples/output_pred.txt");
   std::ofstream out_gt("/workspace/src/test_imu/examples/output_gt.txt");
   float T    = 10;
-  float freq = 500;
+  float freq = 5;
 
   std::shared_ptr<TrajectoryType> traj = std::make_shared<TrajectoryType>(T);
   FakeImu imu(traj, freq, 102030);
