@@ -91,11 +91,13 @@ namespace srrg2_solver {
 
     // get the variables
     const Isometry3 T_i = getEstimateAt<0, ad>(vars) * offset_;
-    const Vector3 v_i   = getEstimateAt<1, ad>(vars);
+    const Vector3 v_i =
+      getEstimateAt<1, ad>(vars) + offset_.linear() * (omega_i_.cross(offset_.translation()));
     const Isometry3 T_j = getEstimateAt<2, ad>(vars) * offset_;
-    const Vector3 v_j   = getEstimateAt<3, ad>(vars);
-    const Vector3 ba_i  = getEstimateAt<4, ad>(vars);
-    const Vector3 bg_i  = getEstimateAt<5, ad>(vars);
+    const Vector3 v_j =
+      getEstimateAt<3, ad>(vars) + offset_.linear() * (omega_j_.cross(offset_.translation()));
+    const Vector3 ba_i = getEstimateAt<4, ad>(vars);
+    const Vector3 bg_i = getEstimateAt<5, ad>(vars);
 
     const Matrix3& R_i = T_i.linear();
     const Vector3& p_i = T_i.translation();

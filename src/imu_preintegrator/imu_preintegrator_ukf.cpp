@@ -166,7 +166,6 @@ namespace test_imu {
 
     spoints = SigmaPoints<DeltaManifold>();
 
-    bias_J_     = BiasJacobians();
     is_updated_ = true;
   }
 
