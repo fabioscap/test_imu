@@ -30,6 +30,8 @@
 
 #include <string.h>
 
+#include <chrono>
+
 #include <random>
 
 using namespace std;
@@ -69,7 +71,7 @@ bool string_in_array(const string& query, int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
   // incremental optimization parameters
-  const int window_size = 0;
+  const int window_size = 64;
   const int gps_skip    = 1;
 
   const int first_gps = 0;
@@ -140,7 +142,7 @@ int main(int argc, char* argv[]) {
   const Vector3f& init_gps_pose = gps_measurements.at(first_gps).position;
   Isometry3f init_pose          = Isometry3f::Identity();
   init_pose.translation()       = init_gps_pose;
-  // init_pose.linear()            = test_imu::Rx<float>(M_PI);
+  init_pose.linear()            = test_imu::Rz<float>(M_PI / 2);
 
   VarPoseImuType* prev_pose_var = new VarPoseImuType();
   prev_pose_var->setEstimate(init_pose);
@@ -228,7 +230,8 @@ int main(int argc, char* argv[]) {
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
 
-    std::cout << "integrating IMU measurements in [" << t_previous << "," << gps_time << "]\n";
+    // time to preintegrate
+    auto start = std::chrono::high_resolution_clock::now();
     while (j < imu_measurements.size() && imu_measurements.at(j).timestamp <= gps_time) {
       if (imu_measurements.at(j).timestamp >= t_previous) {
         imu_preintegrator->preintegrate(imu_measurements.at(j),
@@ -239,6 +242,10 @@ int main(int argc, char* argv[]) {
 
       j++;
     }
+    auto stop     = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+
+    std::cout << "Time taken: " << duration.count() << " nanoseconds" << std::endl;
 
     // order of var indeces
     // 1 pose from imu
@@ -393,7 +400,7 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    std::cout << solver.iterationStats() << std::endl;
+    // std::cout << solver.iterationStats() << std::endl;
 
     std::cout << "curr vel after opt: " << curr_vel_var->estimate().transpose() << "\n";
     std::cout << "curr bias_acc after opt: " << curr_bias_acc->estimate().transpose() << "\n";
@@ -509,6 +516,11 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
                                                         distr(gen) * sigmas.gps.y(),
                                                         distr(gen) * sigmas.gps.z());
       gps_measurements.push_back(gps_meas);
+      auto rpy = pose.rotation().eulerAngles(0, 1, 2);
+
+      pose_gt << std::fixed << std::get<0>(data.at(i)).timestamp << ", " << pose.translation().x()
+              << ", " << pose.translation().y() << ", " << pose.translation().z() << ", " << rpy.x()
+              << ", " << rpy.y() << ", " << rpy.z() << "\n";
     }
 
     if (i == 0)

@@ -30,6 +30,8 @@
 
 #include <string.h>
 
+#include <chrono>
+
 using namespace std;
 using namespace srrg2_core;
 using namespace srrg2_solver;
@@ -94,8 +96,6 @@ int main(int argc, char* argv[]) {
   bool use_gps  = !string_in_array("nogps", argc, argv);
 
   // inspect covariances
-  ofstream cov_dump(example_folder + "/covariance.txt");
-  ofstream det_dump(example_folder + "/determinant.txt");
 
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
@@ -107,12 +107,12 @@ int main(int argc, char* argv[]) {
 
   Solver solver;
   solver.param_termination_criteria.setValue(nullptr);
-  solver.param_max_iterations.pushBack(50);
+  solver.param_max_iterations.pushBack(30);
   IterationAlgorithmBasePtr alg(new IterationAlgorithmGN);
   std::shared_ptr<IterationAlgorithmGN> temp = std::dynamic_pointer_cast<IterationAlgorithmGN>(alg);
-  temp->param_damping.setValue(5e2);
+  temp->param_damping.setValue(1000);
   solver.param_algorithm.setValue(alg);
-  solver.param_verbose.setValue(true);
+  // solver.param_verbose.setValue(true);
 
   FactorGraphPtr graph(new FactorGraph);
 
@@ -125,6 +125,7 @@ int main(int argc, char* argv[]) {
   using FactorImuSlimType = ImuPreintegrationFactorSlim;
 
   // initialization
+  std::vector<std::pair<double, size_t>> variable_timestamps;
 
   const Vector3f& init_gps_pose = gps_measurements.at(0).position;
   Isometry3f init_pose          = Isometry3f::Identity();
@@ -135,6 +136,8 @@ int main(int argc, char* argv[]) {
   prev_pose_var->setEstimate(init_pose);
   prev_pose_var->setGraphId(0);
   graph->addVariable(VariableBasePtr(prev_pose_var));
+  variable_timestamps.push_back(
+    std::make_pair(gps_measurements.at(0).time, prev_pose_var->graphId()));
 
   FactorGpsType* gps_factor = new FactorGpsType();
   gps_factor->setVariableId(0, 0);
@@ -175,7 +178,7 @@ int main(int argc, char* argv[]) {
   gyro_bias_local_ids.push(prev_bias_gyro->graphId());
   variable_ids.insert(prev_bias_gyro->graphId());
 
-  std::cout << "adding bias_gyro variable with id: " << prev_bias_gyro->graphId() << "\n";
+  // std::cout << "adding bias_gyro variable with id: " << prev_bias_gyro->graphId() << "\n";
 
   size_t graph_id = 4;
 
@@ -208,14 +211,14 @@ int main(int argc, char* argv[]) {
   imu_preintegrator->setNoiseBiasAccelerometer(
     Vector3f::Constant(kitti_calibration.accelerometer_bias_sigma));
 
-  /*   imu_preintegrator->setNoiseGyroscope(
-      Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
-    imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
-      kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
-    imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
-      kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
-    imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
-      kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma)); */
+  /* imu_preintegrator->setNoiseGyroscope(
+    Vector3f::Constant(kitti_calibration.gyroscope_sigma * kitti_calibration.gyroscope_sigma));
+  imu_preintegrator->setNoiseAccelerometer(Vector3f::Constant(
+    kitti_calibration.accelerometer_sigma * kitti_calibration.accelerometer_sigma));
+  imu_preintegrator->setNoiseBiasGyroscope(Vector3f::Constant(
+    kitti_calibration.gyroscope_bias_sigma * kitti_calibration.gyroscope_bias_sigma));
+  imu_preintegrator->setNoiseBiasAccelerometer(Vector3f::Constant(
+    kitti_calibration.accelerometer_bias_sigma * kitti_calibration.accelerometer_bias_sigma)); */
 
   size_t j = 0;
   for (size_t i = 1; i < gps_measurements.size(); i = i + gps_skip) {
@@ -229,6 +232,7 @@ int main(int argc, char* argv[]) {
     imu_preintegrator->setBiasAcc(prev_bias_acc->estimate());
     imu_preintegrator->setBiasGyro(prev_bias_gyro->estimate());
 
+    auto start = std::chrono::high_resolution_clock::now();
     while (j < imu_measurements.size() && imu_measurements.at(j).time <= gps_time) {
       if (imu_measurements.at(j).time >= t_previous) {
         test_imu::ImuMeasurement meas;
@@ -240,7 +244,11 @@ int main(int argc, char* argv[]) {
 
       j++;
     }
+    auto stop     = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
 
+    std::cout << "Time taken: " << duration.count() << " nanoseconds" << std::endl;
+    std::cout << imu_preintegrator->measurements().size() << " measurements.\n";
     // order of var indeces
     // 1 pose from imu
     // 2 vel from imu
@@ -258,7 +266,8 @@ int main(int argc, char* argv[]) {
     graph->addVariable(VariableBasePtr(curr_pose_var));
     pose_local_ids.push(curr_pose_var->graphId());
     variable_ids.insert(curr_pose_var->graphId());
-    // std::cout << "adding pose variable with id: " << curr_pose_var->graphId() << "\n";
+    variable_timestamps.push_back(
+      std::make_pair(gps_measurements.at(i).time, curr_pose_var->graphId()));
 
     VarVelImuType* curr_vel_var = new VarVelImuType();
     curr_vel_var->setGraphId(graph_id++);
@@ -284,15 +293,12 @@ int main(int argc, char* argv[]) {
     gyro_bias_local_ids.push(curr_bias_gyro->graphId());
     variable_ids.insert(curr_bias_gyro->graphId());
 
-    std::cout << "imu preintegrator has absorbed: " << imu_preintegrator->measurements().size()
-              << " measurements.\n";
-
     // todo remove this
     void* imu_factor_ptr;
     if (use_imu && imu_preintegrator->measurements().size() > 0) {
       // std::cout << imu_preintegrator->sigma() << "\n";
       if (!use_slim) {
-        std::cout << "full factor\n";
+        // std::cout << "full factor\n";
         FactorImuType* imu_factor = new FactorImuType();
         imu_factor->setGrav(Vector3f(0.f, 0.f, -9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
@@ -311,7 +317,7 @@ int main(int argc, char* argv[]) {
         graph->addFactor(FactorBasePtr(imu_factor));
         imu_factor_ptr = imu_factor;
       } else {
-        std::cout << "slim factor\n";
+        // std::cout << "slim factor\n";
         FactorImuSlimType* imu_factor = new FactorImuSlimType();
         imu_factor->setGrav(Vector3f(0.f, 0.f, -9.80655));
         imu_factor->setVariableId(0, prev_pose_var->graphId());
@@ -348,19 +354,12 @@ int main(int argc, char* argv[]) {
     if (use_gps) {
       graph->addFactor(FactorBasePtr(gps_factor));
     }
-    cov_dump << "cov:\n" << imu_preintegrator->sigma() << "\n\n";
-    cov_dump << "omega:\n" << imu_preintegrator->sigma().inverse() << "\n\n";
-    det_dump << imu_preintegrator->sigma().determinant() << "\n";
     imu_preintegrator->reset();
 
     // local optimization
-    std::cout << "#local poses " << pose_local_ids.size() << "\n";
     FactorGraphView local_window;
 
-    std::cout << "local opt.\n";
-
     while (pose_local_ids.size() > window_size) {
-      std::cout << "sliding variables\n";
       variable_ids.erase(pose_local_ids.front());
       variable_ids.erase(vel_local_ids.front());
       variable_ids.erase(acc_bias_local_ids.front());
@@ -382,22 +381,13 @@ int main(int argc, char* argv[]) {
 
     solver.setGraph(local_window);
     solver.compute();
-    std::cout << "imu factor jacobian: \n";
-    if (use_slim) {
-      std::cout << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian().rows() << "x"
-                << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian().cols() << "\n";
-      std::cout << ((FactorImuSlimType*) imu_factor_ptr)->totalJacobian() << "\n";
-    } else {
-      std::cout << ((FactorImuType*) imu_factor_ptr)->totalJacobian().rows() << "x"
-                << ((FactorImuType*) imu_factor_ptr)->totalJacobian().cols() << "\n";
-      std::cout << ((FactorImuType*) imu_factor_ptr)->totalJacobian() << "\n";
-    }
 
-    std::cout << solver.iterationStats() << std::endl;
+    // std::cout << solver.iterationStats() << std::endl;
 
-    std::cout << "curr vel after opt: " << curr_vel_var->estimate().transpose() << "\n";
-    std::cout << "curr bias_acc after opt: " << curr_bias_acc->estimate().transpose() << "\n";
-    std::cout << "curr bias_gyro after opt: " << curr_bias_gyro->estimate().transpose() << "\n";
+    /*     std::cout << "curr vel after opt: " << curr_vel_var->estimate().transpose() << "\n";
+        std::cout << "curr bias_acc after opt: " << curr_bias_acc->estimate().transpose() << "\n";
+        std::cout << "curr bias_gyro after opt: " << curr_bias_gyro->estimate().transpose() << "\n";
+     */
 
     prev_pose_var  = curr_pose_var;
     prev_vel_var   = curr_vel_var;
@@ -411,36 +401,41 @@ int main(int argc, char* argv[]) {
       v->setStatus(VariableBase::Active);
     }
   }
-  solver.setGraph(graph);
-  solver.compute();
+  /*   solver.setGraph(graph);
+    solver.compute();
 
-  std::cout << "final optimization" << std::endl;
-  std::cout << solver.iterationStats() << std::endl;
+    std::cout << "final optimization" << std::endl;
+    std::cout << solver.iterationStats() << std::endl;*/
   const std::string boss_graph_filename = example_folder + "/imu_gps_optimized.boss";
 
   graph->setSerializationLevel(-1);
   graph->write(boss_graph_filename);
   std::cout << "graph written in " << boss_graph_filename << std::endl;
 
-  ofstream dumper;
-  dumper.open(example_folder + "/output.txt");
+  std::ofstream fp_out(std::string(PROJECT_FOLDER) + "/kitti.csv");
+  if (!fp_out)
+    throw std::runtime_error("cannot open output csv file");
 
-  for (size_t i = 0; i < graph->variables().size(); ++i) {
-    const VarPoseImuType* curr_pose_var = dynamic_cast<const VarPoseImuType*>(graph->variable(i));
-    if (curr_pose_var == nullptr) {
-      continue;
+  for (size_t i = 0; i < variable_timestamps.size(); ++i) {
+    auto pair      = variable_timestamps.at(i);
+    double time    = pair.first;
+    size_t pose_id = pair.second;
+
+    VariableBase* var        = graph->variables().find(pose_id).value();
+    VarPoseImuType* pose_var = dynamic_cast<VarPoseImuType*>(var);
+    if (!pose_var) {
+      throw std::runtime_error("error fetching variable");
     }
 
-    const auto& curr_pose            = curr_pose_var->estimate();
-    const Vector3f& pose_translation = curr_pose.translation();
-    dumper << pose_translation.x() << " " << pose_translation.y() << " " << pose_translation.z()
-           << " "
-           << "\n";
-  }
-  dumper.close();
+    Eigen::Isometry3f pose = pose_var->estimate();
+    auto rpy               = pose.rotation().eulerAngles(0, 1, 2);
 
-  cov_dump.close();
-  det_dump.close();
+    fp_out << std::fixed << time << ", " << pose.translation().x() << ", " << pose.translation().y()
+           << ", " << pose.translation().z() << ", " << rpy.x() << ", " << rpy.y() << ", "
+           << rpy.z() << "\n";
+  }
+
+  fp_out.close();
 }
 
 void loadKittiData(KittiCalibration& kitti_calibration,

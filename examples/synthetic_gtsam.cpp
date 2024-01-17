@@ -32,6 +32,8 @@
 
 #include "synthetic/synthetic.h"
 
+#include <chrono>
+
 using namespace std;
 using namespace gtsam;
 
@@ -212,6 +214,7 @@ int main(int argc, char* argv[]) {
     current_summarized_measurement =
       std::make_shared<PreintegratedImuMeasurements>(imu_params, current_bias);
 
+    auto start = std::chrono::high_resolution_clock::now();
     while (j < imu_measurements.size() && imu_measurements[j].time <= t) {
       if (imu_measurements[j].time >= t_previous) {
         current_summarized_measurement->integrateMeasurement(imu_measurements[j].accelerometer,
@@ -221,6 +224,10 @@ int main(int argc, char* argv[]) {
       }
       j++;
     }
+    auto stop     = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+
+    std::cout << "Time taken: " << duration.count() << " nanoseconds" << std::endl;
 
     // Create IMU factor
     auto previous_pose_key = X(prev_idx);

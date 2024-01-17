@@ -100,7 +100,10 @@ target_link_libraries(compute_rpe
                       ${catkin_LIBRARIES}
 )
 
-
+add_executable(graph_viz graph_viz.cpp)
+target_link_libraries(graph_viz 
+  preintegration_factor
+  ${catkin_LIBRARIES})
 
 find_package(GTSAMCMakeTools)
 find_package(GTSAM REQUIRED) # Uses installed package
