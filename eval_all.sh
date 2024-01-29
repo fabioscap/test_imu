@@ -18,33 +18,36 @@ for folder in "${folders[@]}"; do
     mkdir -p "eval/$folder"
 done
 
-for folder in "${folders[@]}"; do
-  echo "running $folder"
-  rosrun test_imu nclt $folder > eval/$folder/log.txt # folder is also the preintegration type
-  for seq in "${seq_len[@]}"; do
-      mkdir -p eval/$folder/$seq
-      rosrun test_imu compute_rpe $seq ./nclt.csv ./data/nclt/gt_float.csv
-      mv t_err_$seq.txt eval/$folder/$seq/t_err.txt
-      mv r_err_$seq.txt eval/$folder/$seq/r_err.txt
-      gnuplot -e "set term png;
-      set title 'Translation RPE';
-      set xlabel 'poses';
-      set ylabel 'error [%]';
-      set output 'eval/${folder}/${seq}/t_err.png';
-      plot 'eval/${folder}/${seq}/t_err.txt' with lines, 'eval/gtsam/${seq}/t_err.txt' with lines;"
-      gnuplot -e "set term png;
-      set title 'Orientation RPE';
-      set output 'eval/${folder}/${seq}/r_err.png';
-      set xlabel 'poses';
-      set ylabel 'error [deg/m]';
-      plot 'eval/${folder}/${seq}/r_err.txt' with lines, 'eval/gtsam/${seq}/r_err.txt' with lines;";
-                
-  done
-done
+do_srrg=false
+if [ "$do_srrg" = true ]; then
+    for folder in "${folders[@]}"; do
+    echo "running $folder"
+    rosrun test_imu nclt $folder > eval/$folder/log.txt # folder is also the preintegration type
+    for seq in "${seq_len[@]}"; do
+        mkdir -p eval/$folder/$seq
+        rosrun test_imu compute_rpe $seq ./nclt.csv ./data/nclt/gt_float.csv
+        mv t_err_$seq.txt eval/$folder/$seq/t_err.txt
+        mv r_err_$seq.txt eval/$folder/$seq/r_err.txt
+        gnuplot -e "set term png;
+        set title 'RTE';
+        set xlabel 'poses';
+        set ylabel 'error [%]';
+        set output 'eval/${folder}/${seq}/t_err.png';
+        plot 'eval/${folder}/${seq}/t_err.txt' with lines, 'eval/gtsam/${seq}/t_err.txt' with lines;"
+        gnuplot -e "set term png;
+        set title 'RRE';
+        set output 'eval/${folder}/${seq}/r_err.png';
+        set xlabel 'poses';
+        set ylabel 'error [deg/m]';
+        plot 'eval/${folder}/${seq}/r_err.txt' with lines, 'eval/gtsam/${seq}/r_err.txt' with lines;";
+                    
+    done
+    done
+fi
 
 for seq in "${seq_len[@]}"; do
     gnuplot -e "set term png;
-    set title 'Combined Translation RPE for ${seq}m';
+    set title 'RTE\@${seq}m';
     set output 'eval/t_err_${seq}_all.png';
     set xlabel 'poses';
     set ylabel 'error [%]';
@@ -52,12 +55,12 @@ for seq in "${seq_len[@]}"; do
          'eval/slim/${seq}/t_err.txt' with lines title 'slim', \
          'eval/ukf/${seq}/t_err.txt' with lines title 'ukf', \
          'eval/ukfslim/${seq}/t_err.txt' with lines title 'ukfslim', \
-         'eval/gtsam/${seq}/t_err.txt' with lines title 'gtsam';"
+         'eval/gtsam/${seq}/t_err.txt' with lines title 'gtsam' linecolor rgb 'red' linewidth 2;"
 done
 
 for seq in "${seq_len[@]}"; do
     gnuplot -e "set term png;
-    set title 'Combined Rotation RPE for ${seq}m';
+    set title 'RRE\@${seq}m';
     set output 'eval/r_err_${seq}_all.png';
     set xlabel 'poses';
     set ylabel 'error [deg/m]';
@@ -65,12 +68,12 @@ for seq in "${seq_len[@]}"; do
          'eval/slim/${seq}/r_err.txt' with lines title 'slim', \
          'eval/ukf/${seq}/r_err.txt' with lines title 'ukf', \
          'eval/ukfslim/${seq}/r_err.txt' with lines title 'ukfslim', \
-         'eval/gtsam/${seq}/r_err.txt' with lines title 'gtsam';"
+         'eval/gtsam/${seq}/r_err.txt' with lines title 'gtsam' linecolor rgb 'red' linewidth 2;"
 done
 
 
 for seq in "${seq_len[@]}"; do
-    echo "Method, Translation RPE [\%], Rotation RPE [deg/m]" > eval/rpe_averages_$seq.csv
+    echo "Method, RTE [\%], RRE [deg/m]" > eval/rpe_averages_$seq.csv
 
     for folder in "${folders[@]}"; do
             avg_t_err=$(awk '{sum += $1} END {print sum/NR}' eval/$folder/$seq/t_err.txt)
