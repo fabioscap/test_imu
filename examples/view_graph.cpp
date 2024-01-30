@@ -104,7 +104,6 @@ void parseCSVFile(const std::string& csv_file, FactorGraphPtr graph) {
   int graph_id = 7;
   int i        = 0;
   while (std::getline(file, line)) {
-    std::cout << graph_id << "\n";
     // Skip lines starting with '#'
     if (line[0] == '#') {
       continue;

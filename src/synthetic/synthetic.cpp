@@ -21,7 +21,7 @@ void SE3EightTrajectory::sampleTrajectory(float t,
                                           core::Vector3f& vel,
                                           core::Vector3f& acc) const {
   // lemniscate cartesian equations
-  float scaling = (2 * M_PI / T_);
+  float scaling = (2 * M_PI / T());
   float theta   = t * scaling;
 
   float ctheta  = std::cos(theta);
@@ -48,7 +48,7 @@ void test_imu::SE3CircleTrajectory::sampleTrajectory(float t,
                                                      core::Vector3f& vel,
                                                      core::Vector3f& acc) const {
   using namespace core;
-  float scaling = (2 * M_PI / T_);
+  float scaling = (2 * M_PI / T());
   float theta   = t * scaling;
 
   float ctheta = std::cos(theta);
@@ -65,7 +65,7 @@ void test_imu::SE3SineTrajectory::sampleTrajectory(float t,
                                                    core::Vector3f& vel,
                                                    core::Vector3f& acc) const {
   using namespace core;
-  float scaling = (2 * M_PI / T_);
+  float scaling = (2 * M_PI / T());
   float theta   = t * scaling;
 
   float stheta = std::sin(theta);
@@ -86,8 +86,8 @@ void test_imu::SE3StraightTrajectory::sampleTrajectory(float t,
   using namespace core;
 
   core::Vector3f end(l * std::cos(theta), l * sin(theta), 0);
-  float scaling = 1 / T_;
-  float s       = t / T_;
+  float scaling = 1 / T();
+  float s       = t / T();
   float s2      = s * s;
   float s3      = s2 * s;
   float s4      = s3 * s;
@@ -106,7 +106,7 @@ void test_imu::SE3StraightTrajectory::sampleTrajectory(float t,
 void SE3PlanarTrajectory::getPoseMeasurement(float t,
                                              core::Isometry3f& pose,
                                              core::Vector3f& vel,
-                                             ImuMeasurement& measurement) {
+                                             ImuMeasurement& measurement) const {
   using namespace core;
 
   pose.setIdentity();
@@ -142,29 +142,34 @@ void SE3PlanarTrajectory::getPoseMeasurement(float t,
   const Matrix3f& R        = pose.rotation();
   measurement.acceleration = R.transpose() * acc;
 
-  // angular velocity in moving frame
-  // Rt *Rdot = skew(omega)
-
-  /*   Matrix3f Rdot = Matrix3f::Zero();
-    float v_norm2 = v_norm * v_norm;
-    Rdot.col(0) << ((Matrix3f::Identity() - vel * vel.transpose() / v_norm2) / v_norm) * acc;
-    Rdot.col(1) << -Rdot(1, 0), Rdot(0, 0), 0;
-    Matrix3f omega_skew = R.transpose() * Rdot; */
-
   // expecting only wz != 0
   measurement.angular_vel << 0, 0, (vel(0) * acc(1) - vel(1) * acc(0)) / (v_norm * v_norm);
   measurement.timestamp = t;
 }
+void test_imu::SE3PlanarTrajectory::generateData(
+  float freq,
+  std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>>& data) const {
+  using namespace core;
 
+  int num  = T_ * freq;
+  float dt = 1 / freq;
+
+  data.resize(num);
+
+  float t = 0;
+  for (int i = 0; i < num; ++i, t += dt) {
+    Isometry3f& pose     = std::get<2>(data.at(i));
+    ImuMeasurement& meas = std::get<0>(data.at(i));
+    Vector3f& vel        = std::get<1>(data.at(i));
+    getPoseMeasurement(t, pose, vel, meas);
+  }
+}
 void test_imu::FakeImu::generateData(
   std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>>& data,
   bool noise) {
   using namespace core;
 
-  int num  = trajectory_->T() * freq_;
-  float dt = 1 / freq_;
-
-  data.resize(num);
+  trajectory().generateData(freq_, data);
 
   // initialize biases
   Vector3f ba_ = 1e-8 * Vector3f::Ones();
@@ -173,11 +178,10 @@ void test_imu::FakeImu::generateData(
   std::normal_distribution<double> std_dist(0.0, 1.0);
 
   float t = 0;
-  for (int i = 0; i < num; ++i, t += dt) {
+  for (int i = 0; i < data.size(); ++i) {
     Isometry3f& pose     = std::get<2>(data.at(i));
     ImuMeasurement& meas = std::get<0>(data.at(i));
     Vector3f& vel        = std::get<1>(data.at(i));
-    trajectory_->getPoseMeasurement(t, pose, vel, meas);
     // noise
     // maybe bugged
     if (noise) {
@@ -189,5 +193,72 @@ void test_imu::FakeImu::generateData(
       meas.angular_vel +=
         bg_ + std_gyro_ * Vector3f(std_dist(rnd_gen_), std_dist(rnd_gen_), std_dist(rnd_gen_));
     }
+  }
+}
+
+void test_imu::MeasurementTrajectory::generateData(
+  float freq,
+  std::vector<std::tuple<ImuMeasurement, core::Vector3f, core::Isometry3f>>& data) const {
+  using namespace core;
+
+  int k = 10;
+
+  float freq_int = k * freq; // the frequency at which the measurements is integrated
+
+  int num  = T_ * freq_int;
+  float dt = 1 / freq_int;
+
+  data.resize(T_ * freq);
+  std::get<0>(data.at(0));
+  std::get<1>(data.at(0)).setZero();
+  std::get<2>(data.at(0)).setIdentity();
+
+  Isometry3f curr_pose;
+  Vector3f curr_vel;
+
+  curr_pose.setIdentity();
+  curr_vel.setZero();
+
+  float t = 0;
+  int j   = 0;
+  for (int i = 0; i < num; ++i, t += dt) {
+    Vector3f acceleration, angular_vel;
+    sampleMeasurement(t, acceleration, angular_vel);
+
+    if (i % k == 0) {
+      ImuMeasurement& meas = std::get<0>(data.at(j));
+      meas.acceleration    = acceleration;
+      meas.angular_vel     = angular_vel;
+      meas.timestamp       = t;
+
+      std::get<1>(data.at(j)) = curr_vel;
+      std::get<2>(data.at(j)) = curr_pose;
+
+      ++j;
+    }
+    // numerically integrate the pose given the measurements
+    curr_pose.translation() += curr_vel * dt + 0.5 * acceleration * dt * dt;
+    curr_vel += dt * acceleration;
+
+    Matrix3f R_curr = curr_pose.linear();
+    R_curr *= geometry3d::expMapSO3((angular_vel * dt).eval());
+
+    fixRotation(R_curr);
+    curr_pose.linear() = R_curr;
+  }
+}
+
+void test_imu::MeasurementTrajectory::sampleMeasurement(float t,
+                                                        core::Vector3f& acc,
+                                                        core::Vector3f& ang_vel) const {
+  if (t < T_ / 3) {
+    acc << 1, 0, 0;
+    ang_vel << 0, 0, 0;
+  } else if (t < 2 * T_ / 3) {
+    acc << 0, 0, 0;
+    ang_vel << 0, 0, 0;
+  } else {
+    acc << 0, 0, 0;
+    ang_vel << 0, 0, 0;
   }
 }
