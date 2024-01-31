@@ -31,6 +31,19 @@ target_link_libraries(synthetic_gtsam
                       synthetic
 )
 
+add_executable(synthetic_run synthetic_run.cpp)
+target_link_libraries(synthetic_run
+                      gtsam
+
+                      common
+                      imu_preintegrator
+                      synthetic
+                      preintegration_factor
+                      srrg2_solver_core_library
+                      srrg2_solver_types3d_library
+)
+
+
 find_package(GTSAMCMakeTools)
 find_package(GTSAM REQUIRED) # Uses installed package
 include_directories(${GTSAM_INCLUDE_DIR})
