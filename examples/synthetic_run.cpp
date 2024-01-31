@@ -33,6 +33,20 @@
 
 #include "srrg_solver/solver_core/factor_graph_view.h"
 
+// gtsam
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/navigation/CombinedImuFactor.h>
+#include <gtsam/navigation/GPSFactor.h>
+#include <gtsam/navigation/ImuFactor.h>
+#include <gtsam/nonlinear/ISAM2.h>
+#include <gtsam/nonlinear/ISAM2Params.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/slam/PriorFactor.h>
+
+#include <gtsam/nonlinear/GaussNewtonOptimizer.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+
 using test_imu::ImuMeasurement;
 
 struct Sigmas {
@@ -71,8 +85,12 @@ void generateData(std::vector<GpsMeasurement>& gps_measurements,
                   bool dump_gt);
 
 void run_srrg();
+void run_gtsam();
 
 int main(int argc, char* argv[]) {
+  // parse the arguments from the configuration file
+  parseArguments(argc, argv);
+
   // generate the folder in which results are stored
   auto now     = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   std::tm* ptm = std::localtime(&now);
@@ -81,14 +99,16 @@ int main(int argc, char* argv[]) {
   results_dir = PROJECT_FOLDER + std::string("/simulations/") + folder_ss.str();
   mkdir(results_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-  // parse the arguments from the configuration file
-  parseArguments(argc, argv);
-
   // generate synthetic data
   generateData(gps_measurements, imu_measurements, vel0, true);
 
   // run srrg
+  std::cout << "running srrg\n";
   run_srrg();
+
+  // run gtsam
+  std::cout << "running gtsam\n";
+  run_gtsam();
 
   return 0;
 }
@@ -236,7 +256,7 @@ void run_srrg() {
   variables_and_factors_3d_registerTypes();
   variables_and_factors_imu_registerTypes();
 
-  std::ofstream log_file(results_dir + std::string("/log.txt"));
+  std::ofstream log_file(results_dir + std::string("/srrg_log.txt"));
 
   using AlgorithmType = IterationAlgorithmLM;
 
@@ -554,4 +574,194 @@ void run_srrg() {
   }
 
   fp_out.close();
+}
+
+void run_gtsam() {
+  using namespace gtsam;
+
+  using symbol_shorthand::B; // Bias  (ax,ay,az,gx,gy,gz)
+  using symbol_shorthand::V; // Vel   (xdot,ydot,zdot)
+  using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
+
+  std::ofstream log_file(results_dir + std::string("/gtsam_log.txt"));
+
+  Values result;
+
+  // Configure different variables
+  // double t_offset = gps_measurements[0].time;
+  size_t first_gps = 0;
+  size_t gps_skip  = 1; // Skip this many GPS measurements each time
+  double g         = 0.0;
+  auto w_coriolis  = Vector3::Zero(); // zero vector
+
+  LevenbergMarquardtParams parameters;
+  parameters.setDiagonalDamping(false);
+  parameters.setlambdaInitial(100);
+  parameters.setlambdaFactor(1.0);
+  parameters.setMaxIterations(50);
+
+  parameters.setVerbosity("Summary");
+
+  // Configure noise models
+  auto noise_model_gps =
+    noiseModel::Diagonal::Precisions((Vector6() << Vector3::Constant(0), sigmas.gps).finished());
+
+  // Set initial conditions for the estimated trajectory
+  // initial pose is the reference frame (navigation frame)
+  auto current_pose_global = Pose3(Rot3(), gps_measurements[first_gps].position.cast<double>());
+  // the vehicle is stationary at the beginning at position 0,0,0
+  Vector3 current_velocity_global = vel0.cast<double>();
+  auto current_bias               = imuBias::ConstantBias(); // init with zero bias
+
+  auto sigma_init_x = noiseModel::Diagonal::Precisions(
+    (Vector6() << Vector3::Constant(0), Vector3::Constant(1.0)).finished());
+  auto sigma_init_v = noiseModel::Diagonal::Sigmas(Vector3::Constant(1000.0));
+  auto sigma_init_b = noiseModel::Diagonal::Sigmas(
+    (Vector6() << Vector3::Constant(0.100), Vector3::Constant(5.00e-05)).finished());
+
+  // Set IMU preintegration parameters
+  Matrix33 measured_acc_cov   = I_3x3 * sigmas.acc;
+  Matrix33 measured_omega_cov = I_3x3 * sigmas.gyro;
+  // error committed in integrating position from velocities
+  Matrix33 integration_error_cov = I_3x3 * 0.0;
+
+  auto imu_params                     = PreintegratedImuMeasurements::Params::MakeSharedU(g);
+  imu_params->accelerometerCovariance = measured_acc_cov;      // acc white noise in continuous
+  imu_params->integrationCovariance   = integration_error_cov; // integration uncertainty continuous
+  imu_params->gyroscopeCovariance     = measured_omega_cov;    // gyro white noise in continuous
+  imu_params->omegaCoriolis           = w_coriolis;
+
+  std::shared_ptr<PreintegratedImuMeasurements> current_summarized_measurement = nullptr;
+
+  NonlinearFactorGraph graph;
+  Values values;
+
+  size_t j                              = 0;
+  size_t included_imu_measurement_count = 0;
+
+  for (size_t i = first_gps; i < gps_measurements.size(); i = i + gps_skip) {
+    log_file << std::fixed << "gps_idx: " << i << " t: " << gps_measurements[i].time << "\n";
+
+    // At each non=IMU measurement we initialize a new node in the graph
+    auto current_pose_key = X(i);
+    auto current_vel_key  = V(i);
+    auto current_bias_key = B(i);
+
+    if (i == first_gps) {
+      // Create initial estimate and prior on initial pose, velocity, and biases
+      values.insert(current_pose_key, current_pose_global);
+      values.insert(current_vel_key, current_velocity_global);
+      values.insert(current_bias_key, current_bias);
+      graph.emplace_shared<PriorFactor<Pose3>>(current_pose_key, current_pose_global, sigma_init_x);
+      graph.emplace_shared<PriorFactor<Vector3>>(
+        current_vel_key, current_velocity_global, sigma_init_v);
+      graph.emplace_shared<PriorFactor<imuBias::ConstantBias>>(
+        current_bias_key, current_bias, sigma_init_b);
+      continue;
+    }
+    int prev_idx            = (i == first_gps + 1) ? first_gps : i - gps_skip;
+    const double t_previous = gps_measurements.at(prev_idx).time;
+    double t                = gps_measurements[i].time;
+
+    // Summarize IMU data between the previous GPS measurement and now
+    current_summarized_measurement =
+      std::make_shared<PreintegratedImuMeasurements>(imu_params, current_bias);
+
+    auto start = std::chrono::high_resolution_clock::now();
+    while (j < imu_measurements.size() && imu_measurements[j].timestamp <= t) {
+      if (imu_measurements[j].timestamp >= t_previous) {
+        current_summarized_measurement->integrateMeasurement(
+          imu_measurements[j].acceleration.cast<double>(),
+          imu_measurements[j].angular_vel.cast<double>(),
+          imu_measurements.at(j + 1).timestamp - imu_measurements.at(j).timestamp);
+      }
+      j++;
+    }
+    auto stop     = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+
+    log_file << "Time taken: " << duration.count() << " nanoseconds" << std::endl;
+
+    // Create IMU factor
+    auto previous_pose_key = X(prev_idx);
+    auto previous_vel_key  = V(prev_idx);
+    auto previous_bias_key = B(prev_idx);
+
+    graph.emplace_shared<ImuFactor>(previous_pose_key,
+                                    previous_vel_key,
+                                    current_pose_key,
+                                    current_vel_key,
+                                    previous_bias_key,
+                                    *current_summarized_measurement);
+
+    // Bias evolution as given in the IMU metadata
+    auto sigma_between_b = noiseModel::Diagonal::Sigmas(
+      (Vector6() << Vector3::Constant(sqrt(included_imu_measurement_count) *
+                                      std::sqrt(sigmas.bias_acc)),
+       Vector3::Constant(sqrt(included_imu_measurement_count) * std::sqrt(sigmas.bias_gyro)))
+        .finished());
+    graph.emplace_shared<BetweenFactor<imuBias::ConstantBias>>(
+      previous_bias_key, current_bias_key, imuBias::ConstantBias(), sigma_between_b);
+
+    // Create GPS factor
+    auto gps_pose =
+      Pose3(current_pose_global.rotation(), gps_measurements[i].position.cast<double>());
+
+    graph.emplace_shared<PriorFactor<Pose3>>(current_pose_key, gps_pose, noise_model_gps);
+
+    // Add initial values for velocity and bias based on the previous
+    // estimates
+    values.insert(current_pose_key, gps_pose);
+    values.insert(current_vel_key, current_velocity_global);
+    values.insert(current_bias_key, current_bias);
+
+    // Stop iterating once the change in error between steps is less than this value
+    parameters.relativeErrorTol = 1e-5;
+    // Do not perform more than N ite
+
+    LevenbergMarquardtOptimizer optimizer(graph, values, parameters);
+    Values optimizedValues = optimizer.optimize();
+    values                 = optimizedValues;
+
+    current_pose_global     = values.at<Pose3>(current_pose_key);
+    current_velocity_global = values.at<Vector3>(current_vel_key);
+    current_bias            = values.at<imuBias::ConstantBias>(current_bias_key);
+  }
+
+  // Save results to file
+  FILE* fp_out = fopen((results_dir + "/synthetic.csv").c_str(), "w+");
+
+  for (size_t i = 0; i < gps_measurements.size(); i = i + gps_skip) {
+    auto pose_key = X(i);
+    auto vel_key  = V(i);
+    auto bias_key = B(i);
+
+    auto pose     = values.at<Pose3>(pose_key);
+    auto velocity = values.at<Vector3>(vel_key);
+    auto bias     = values.at<imuBias::ConstantBias>(bias_key);
+
+    auto pose_euler = pose.rotation().rpy();
+
+    using namespace test_imu;
+
+    log_file << pose.rotation() << "\n"
+             << Rx(pose_euler.x()) * Ry(pose_euler.y()) * Rz(pose_euler.z()) << "\n\n";
+
+    log_file << "State at #" << i << std::endl;
+    log_file << "Pose:" << std::endl << pose << std::endl;
+    log_file << "Velocity:" << std::endl << velocity << std::endl;
+    log_file << "Bias:" << std::endl << bias << std::endl;
+
+    fprintf(fp_out,
+            "%f,%f,%f,%f,%f,%f,%f\n",
+            gps_measurements[i].time,
+            pose.x(),
+            pose.y(),
+            pose.z(),
+            pose_euler.x(),
+            pose_euler.y(),
+            pose_euler.z());
+  }
+
+  fclose(fp_out);
 }
